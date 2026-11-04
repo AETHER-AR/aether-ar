@@ -1,0 +1,114 @@
+AETHER AR -- READ ME FIRST
+==========================
+
+Mixed reality for Dragon Ball Z: Budokai Tenkaichi 3 (PS2) on Meta Quest: the fighters fight in your real room,
+on your floor and your tables, and your walls and furniture block them.
+Unofficial fan mod. No game files are included: you need your own copy of the game as a disc image (ISO).
+
+
+WHAT YOU NEED
+-------------
+1. A Windows 10 or 11 PC with a gaming graphics card (NVIDIA / AMD, good enough for PC VR), an internet
+   connection, and about 20 GB free on C:.
+2. A Meta Quest 3 or 3S, with a Link cable (or Air Link over Wi-Fi).
+3. Your own Dragon Ball Z: Budokai Tenkaichi 3 disc image, USA version (SLUS-21678), as a plain .iso file.
+
+
+ONE-TIME SETUP (before you install)
+-----------------------------------
+A. On the PC: install the Meta Horizon Link app (formerly Meta Quest Link; meta.com/quest/setup) and
+   connect the headset once. Then, in the Link app:
+   - Settings > General > OpenXR Runtime: press "Set Meta Horizon Link as active".
+   - Settings > General > "Unknown sources": on (needed for apps not from the Meta store; harmless otherwise).
+   - Settings > Beta: turn ON "Developer runtime features", "Passthrough over Meta Horizon Link"
+     and "Spatial data over Meta Horizon Link".
+     Developer runtime features = enables Meta's PC mixed-reality features.
+     Passthrough = lets you see your real surroundings in the headset.
+     Spatial data = lets the mod read YOUR Quest's walls, floor and furniture.
+     No room file needs to be copied. Your room scan is not made public.
+B. In the headset: Settings > Physical space > Space setup. Set up the room you will play in:
+   the walls, and your desk / table and other furniture.
+
+
+INSTALL
+-------
+1. Right-click the ZIP > "Extract All...". (Do not start anything from inside the ZIP.)
+   Put your .iso in a folder you keep (e.g. Documents\BT3): AETHER AR reads it every time you play.
+2. In the extracted folder, double-click "Install AETHER AR.cmd". The AETHER AR Setup window opens.
+   If Windows warns you first, choose "Run" (or "More info" > "Run anyway").
+3. In the Setup window:
+   - drag your .iso file onto the window (or press "Choose the ISO..."): it is checked at once,
+   - leave the install folder as it is (C:\AETHER-AR),
+   - press Install. Windows will ask for permission a few times: click Yes.
+   You do not need to install the build tools yourself. Setup checks and installs missing Git, Python 3.10 or newer,
+   CMake, Ninja and the Visual Studio 2022 C++ / Clang tools, then builds the game from your disc. If Windows App
+   Installer (winget) is missing, Setup explains how to add it before you try again. Android platform-tools are
+   optional; without them, the game still runs, but headset status and automatic boundary control are unavailable.
+   The first install takes 30-60 minutes; the window shows each step. Keep it open until it says
+   "AETHER AR is installed".
+4. Press "Start AETHER AR".
+   In the AETHER AR desktop window, press Help: the first tab, "Quest setup - Start here",
+   repeats every headset and PC setting with a short explanation. Controls are in the second tab.
+   Keep your disc image where it is: AETHER AR reads it every time you play.
+   You can delete the ZIP and this Setup folder.
+
+
+START
+-----
+The desktop shortcut "AETHER AR", or type AETHER in the Start menu.
+To keep it in the taskbar: right-click it in Start > Pin to taskbar.
+No shortcut? Double-click "AETHER AR.cmd" in the install folder (C:\AETHER-AR).
+
+
+PLAY
+----
+1. In the AETHER AR window, press Start. Then put the headset on and turn on Link
+   (Quick Settings > Link). The game appears in the headset by itself (it waits up to 5 minutes).
+   The line under the Start button always says what is happening; if something is missing,
+   a message tells you exactly what to change.
+2. After about 25 seconds of logos: menus = left stick + A. B = back. (The trigger does not select.)
+3. The fight starts on your desk or table by itself -- look around for it. To move it: point a
+   controller at another spot (cyan ring = OK, red = not here) and pull the trigger.
+4. Pause = Menu button. To end: take the headset off and press Stop in the AETHER AR window.
+
+The first Start after installing may restart the Meta Horizon Link app on the PC once (a message
+says so first). That turns on Link's own fix for a black shadow behind the fighters and the aiming
+ray (a Link setting for your Windows user; the window shows it as "Link passthrough edge fix").
+If Link was on in the headset, turn it on again there.
+
+
+RECORDING ON QUEST
+------------------
+For the Quest's built-in camera recording, use Air Link. Start recording in Quest Home,
+then connect through Air Link and start AETHER AR. This was confirmed working on the test
+Quest 3; performance depends on your PC and Wi-Fi.
+
+Known issue: Quest recording over USB Link can cause severe lag or freezing, including
+in the Link menu without the mod running. Dark trails behind fighters have also been
+reported. USB recording is not fixed or validated in this release.
+
+If the camera menu or recording shortcut is unavailable inside Link, leave Link and stop
+recording in Quest Home. More: Help > Quest setup, or Controller guide > Quest recordings,
+in the AETHER AR desktop window.
+
+
+UPDATE
+------
+A new version comes as a new ZIP from whoever gave you AETHER AR: unpack it and run its
+"Install AETHER AR.cmd" -- Setup finds your install, keeps your memory card and settings, and updates it.
+
+
+REMOVE
+------
+Windows Settings > Apps > Installed apps > AETHER AR > Uninstall.
+It asks first whether to keep your memory card (a copy goes to Documents\AETHER AR saves).
+It puts the Link setting of the edge fix back as it was. Your disc image is not touched.
+
+
+MORE
+----
+README.md (open it with Notepad) has the controls and what to do if something does not work.
+If the install stops, the Setup window says why; fix that and press Try again.
+If you need help, send these files:
+- install-log.txt (in this folder, next to "Install AETHER AR.cmd"; the Setup window's "Open the log" shows it)
+- build\setup.log and build\ps2xRuntime\logs\bt3.log (in the install folder, by default C:\AETHER-AR)
