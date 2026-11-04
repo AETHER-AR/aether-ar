@@ -1,0 +1,31 @@
+AETHER AR
+An unofficial mixed-reality mod, by AETHER.
+
+AETHER AR is a modified version of BT3-Recomp
+  https://github.com/z3xox/BT3-Recomp (z3xox, GPL-3.0)
+based on commit e22a34beb564e2d0f32bd60b02f0a95d9645ddcc (see package/mod/BASE).
+
+Modified by AETHER since 20 October 2026.
+Version 1.0.13, 4 November 2026
+
+Every change is in package/mod/aether-ar.patch, a git diff against that
+commit. The changes of each version are listed in package/README.md and in
+the notes of each release. The modified work is licensed under the GNU General
+Public License, version 3 (LICENSE), like BT3-Recomp.
+
+Parts the build uses (Setup fetches them; they are not included here):
+- BT3-Recomp, by z3xox, GPL-3.0, built on PS2Recomp (ran-j, GPL-3.0). Its
+  own third-party parts (paraLLEl-GS, Arntzen Software, LGPL-3.0-or-later;
+  NTSC-U AFS file lists, ViveTheModder, Apache-2.0) are listed in its README
+  and THIRD-PARTY-NOTICES.md.
+- The OpenXR loader from OpenXR-SDK release-1.0.34, The Khronos Group,
+  Apache-2.0 (https://github.com/KhronosGroup/OpenXR-SDK), linked into the
+  build.
+
+No game content: no code, graphics, sound or other files of Dragon Ball Z:
+Budokai Tenkaichi 3 are included. Each player builds the game on their own
+PC from their own disc. Do not share disc images or built programs.
+
+AETHER AR is not affiliated with or endorsed by Bandai Namco, Spike Chunsoft,
+Toei Animation, Bird Studio / Shueisha or Meta. All trademarks belong to
+their owners.

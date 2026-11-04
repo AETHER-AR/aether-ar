@@ -1,0 +1,67 @@
+name: Problem while playing
+description: AETHER AR is installed, but something goes wrong when you start or play it.
+title: "[Playing] "
+labels: ["playing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sorry it did not work. **Report a problem** in the AETHER AR window saves everything a helper needs as one ZIP on your desktop: please attach that.
+        **Never attach, link or ask for a disc image, BIOS or game files.** Attachments are visible to everyone who can see this page.
+  - type: input
+    id: version
+    attributes:
+      label: AETHER AR version
+      description: Shown in the AETHER AR window's title.
+      placeholder: "1.0.14"
+    validations:
+      required: true
+  - type: dropdown
+    id: headset
+    attributes:
+      label: Headset
+      options:
+        - Quest 3
+        - Quest 3S
+        - Quest Pro
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: link
+    attributes:
+      label: Connection
+      options:
+        - Link (USB cable)
+        - Air Link (Wi-Fi)
+        - Other (Virtual Desktop, Steam Link, ...)
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Room
+        - Screen
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. A short video or a headset screenshot helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report ZIP
+      description: Drag the ZIP that **Report a problem** saved on your desktop in here.
+    validations:
+      required: true
+  - type: checkboxes
+    id: nogame
+    attributes:
+      label: No game files
+      options:
+        - label: I have not attached, linked or asked for a disc image, BIOS or game files.
+          required: true

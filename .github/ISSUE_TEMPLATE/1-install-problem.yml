@@ -1,0 +1,56 @@
+name: Install problem
+description: Setup stopped, failed, or the build did not finish.
+title: "[Install] "
+labels: ["install"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sorry it did not work. With the log below, most install problems can be found quickly.
+        **Never attach, link or ask for a disc image, BIOS or game files.** Attachments are visible to everyone who can see this page.
+  - type: input
+    id: version
+    attributes:
+      label: AETHER AR version
+      description: The number in the ZIP's name (AETHER-AR-<version>.zip).
+      placeholder: "1.0.14"
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card
+      placeholder: "NVIDIA RTX 4070"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Which step the Setup window was on, and what it said. A screenshot of the window helps.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        Drag **install-log.txt** in here (it is next to "Install AETHER AR.cmd").
+        If the build had already started, also drag **build\setup.log** from the install folder (C:\AETHER-AR by default); zip it first, it can be large.
+    validations:
+      required: true
+  - type: checkboxes
+    id: nogame
+    attributes:
+      label: No game files
+      options:
+        - label: I have not attached, linked or asked for a disc image, BIOS or game files.
+          required: true

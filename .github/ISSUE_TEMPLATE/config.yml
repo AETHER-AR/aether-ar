@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A question, an idea or a recording to show
+    url: https://github.com/AETHER-AR/aether-ar/discussions
+    about: Ask and share in Discussions. Issues are for things that do not work.
