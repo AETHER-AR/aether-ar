@@ -16,7 +16,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-function Git { & git -C $repo @args; if ($LASTEXITCODE) { throw "git $($args -join ' ') failed" } }
+function RunGit { & git.exe -C $repo @args; if ($LASTEXITCODE) { throw "git $($args -join ' ') failed" } }
 
 if (-not (Test-Path -LiteralPath $Zip)) { throw "no such ZIP: $Zip" }
 $Zip = (Resolve-Path -LiteralPath $Zip).Path
@@ -24,8 +24,8 @@ $name = [IO.Path]::GetFileNameWithoutExtension($Zip)
 if ($name -notmatch '^AETHER-AR-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$') { throw "not a release ZIP name: $name (expected AETHER-AR-<version>.zip)" }
 $version = $matches[1]
 $tag = "v$version"
-if (& git -C $repo status --porcelain) { throw 'this repository has uncommitted changes -- commit or stash them first' }
-if (& git -C $repo tag --list $tag) { throw "the tag $tag exists already" }
+if (& git.exe -C $repo status --porcelain) { throw 'this repository has uncommitted changes -- commit or stash them first' }
+if (& git.exe -C $repo tag --list $tag) { throw "the tag $tag exists already" }
 
 # 1. unpack the ZIP and check it is what make-release.ps1 builds
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -41,7 +41,7 @@ $banned = Get-ChildItem -LiteralPath $src -Recurse -File | Where-Object { $_.Ext
 if ($banned) { throw "the ZIP holds files that never ship: $($banned.Name -join ', ')" }
 
 # 2. package\ = the ZIP (the old files stay in git's history), LICENSE beside it, NOTICE's version line
-if (Test-Path (Join-Path $repo 'package')) { Git rm -r -q package }
+if (Test-Path (Join-Path $repo 'package')) { RunGit rm -r -q package }
 Copy-Item -LiteralPath $src -Destination (Join-Path $repo 'package') -Recurse
 Copy-Item -LiteralPath (Join-Path $src 'LICENSE') -Destination (Join-Path $repo 'LICENSE') -Force
 $notice = Join-Path $repo 'NOTICE'
@@ -50,17 +50,17 @@ $text = [IO.File]::ReadAllText($notice)
 $text = [regex]::Replace($text, '(?m)^Version \S+, .*$', "Version $version, $date")
 $text = [regex]::Replace($text, 'based on commit [0-9a-f]{40}', "based on commit $($base.commit)")
 [IO.File]::WriteAllText($notice, $text)
-Git add -A
+RunGit add -A
 $msg = Join-Path $tmp 'commit.txt'
 $body = "AETHER AR $version`n`nThe release package as published: mod commit $($base.mod), BT3-Recomp base $($base.commit).`n"
 if ($CoAuthor) { $body += "`nCo-Authored-By: $CoAuthor`n" }
 [IO.File]::WriteAllText($msg, $body)
-Git commit -q -F $msg
-Git tag -a $tag -m "AETHER AR $version"
+RunGit commit -q -F $msg
+RunGit tag -a $tag -m "AETHER AR $version"
 "committed and tagged $tag"
 
 # 3. the release notes: the README's section for this version, then how to install or update
-$origin = (& git -C $repo remote get-url origin) -replace '\.git$', ''
+$origin = (& git.exe -C $repo remote get-url origin) -replace '\.git$', ''
 if ($origin -notmatch 'github\.com[/:]([^/]+/[^/]+)$') { throw "the remote 'origin' is not a GitHub repository: $origin" }
 $slug = $matches[1]
 $readme = [IO.File]::ReadAllText((Join-Path $src 'README.md'))
@@ -78,7 +78,7 @@ Something does not work? [Open an issue](https://github.com/$slug/issues/new/cho
 "@)
 if ($NoPush) { "-NoPush: nothing uploaded. Later: git push origin HEAD $tag, then gh release create $tag `"$Zip`" --notes-file `"$notes`""; return }
 
-Git push -q origin HEAD $tag
+RunGit push -q origin HEAD $tag
 $ghArgs = @('release', 'create', $tag, $Zip, '--title', "AETHER AR $version", '--notes-file', $notes, '--verify-tag')
 if (-not $Final) { $ghArgs += '--prerelease' }
 & gh -R $slug @ghArgs
