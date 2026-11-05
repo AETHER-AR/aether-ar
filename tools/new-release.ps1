@@ -16,6 +16,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+# Push and publish as the AETHER-AR account: its gh login lives in its own config folder, so the PC's main gh account
+# (and every other project that uses it) stays as it is. git's GitHub credential helper is gh, so git follows it too.
+if (-not $env:GH_CONFIG_DIR) {
+    $aetherGh = Join-Path $env:APPDATA 'GitHub CLI AETHER-AR'
+    if (-not (Test-Path -LiteralPath $aetherGh)) { throw "no AETHER-AR gh login in $aetherGh -- log in there first: `$env:GH_CONFIG_DIR = '$aetherGh'; gh auth login -h github.com -p https -w" }
+    $env:GH_CONFIG_DIR = $aetherGh
+}
 function RunGit { & git.exe -C $repo @args; if ($LASTEXITCODE) { throw "git $($args -join ' ') failed" } }
 
 if (-not (Test-Path -LiteralPath $Zip)) { throw "no such ZIP: $Zip" }
