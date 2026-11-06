@@ -34,6 +34,7 @@ Air Link), the Quest and Link settings, the controls and the troubleshooting are
 - **Something does not work:** open an issue (**[New issue](../../issues/new/choose)**). The form says which log to
   attach. In the AETHER AR window, **Report a problem** saves everything a helper needs as one ZIP on your desktop.
 - **Questions, ideas, your recordings:** **[Discussions](../../discussions)**.
+- **Videos and news:** **[AE.T.HE.R on YouTube](https://www.youtube.com/@AE.T.HE.R)**.
 - **Never post, link or ask for disc images, BIOS files or game files.** Posts that do are deleted.
 
 ## What is in this repository
@@ -47,6 +48,6 @@ Air Link), the Quest and Link settings, the controls and the troubleshooting are
 AETHER AR is built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) by z3xox (GPL-3.0) and is GPL-3.0 as well
 (see [`LICENSE`](LICENSE)). [`NOTICE`](NOTICE) says what was changed and lists the third-party parts.
 
-AETHER AR is an unofficial fan project by AETHER. It is not affiliated with or endorsed by Bandai Namco, Spike
+AETHER AR is an unofficial fan project by [AETHER](https://www.youtube.com/@AE.T.HE.R). It is not affiliated with or endorsed by Bandai Namco, Spike
 Chunsoft, Toei Animation, Bird Studio / Shueisha or Meta. All trademarks belong to their owners; the game's name is
 used only to say which game this mod is for.
