@@ -4,6 +4,9 @@
 fight in your real room at 20 cm tall, on your floor and your tables, and your walls and furniture (from the Quest's
 own Space Setup) block them.
 
+**You need a Windows PC: it does not run on the Quest alone.** The game runs on your PC and goes to the headset over
+**Meta Horizon Link** (cable) or **Air Link**, so you need a PC VR-class Windows PC with the Meta Horizon Link app.
+
 **Bring your own disc.** Nothing of the game is included: no code, no graphics, no sound. You need your own copy of
 the game (PlayStation 2, **USA**, SLUS-21678) as an ISO; Setup checks it and builds the game from it on your PC.
 
