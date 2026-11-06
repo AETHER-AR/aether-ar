@@ -14,6 +14,18 @@ Get **`AETHER-AR-<version>.zip`** from **[Releases](../../releases)**, unpack it
 Air Link), the Quest and Link settings, the controls and the troubleshooting are in
 **[package/README.md](package/README.md)** and in *Help* in the AETHER AR window.
 
+## If Windows blocks it
+
+- **A warning before Setup starts** ("Open File - Security Warning" or "Windows protected your PC"): AETHER AR is
+  not signed yet. Choose **Run** (or **More info** > **Run anyway**).
+- **Nothing happens, or Windows says Smart App Control blocked it:** Smart App Control (Windows 11) blocks every
+  program that is not signed: Setup, and also the game that Setup builds on your PC. AETHER AR cannot run while it
+  is on. Check it in **Windows Security > App & browser control > Smart App Control settings**:
+  - **Off** or **Evaluation**: not the cause (in *Evaluation* Windows may switch it on by itself later).
+  - **On**: AETHER AR works only after switching it **Off**. That lowers Windows' protection against unknown
+    programs, so it is your call. Before Windows 11 version 25H2 it cannot be switched on again without resetting
+    Windows.
+
 ## Help
 
 - **Something does not work:** open an issue (**[New issue](../../issues/new/choose)**). The form says which log to
