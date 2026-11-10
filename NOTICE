@@ -6,7 +6,7 @@ AETHER AR is a modified version of BT3-Recomp
 based on commit e22a34beb564e2d0f32bd60b02f0a95d9645ddcc (see package/mod/BASE).
 
 Modified by AETHER since 20 October 2026.
-Version 1.0.14, 4 November 2026
+Version 1.0.15, 10 November 2026
 
 Every change is in package/mod/aether-ar.patch, a git diff against that
 commit. The changes of each version are listed in package/README.md and in

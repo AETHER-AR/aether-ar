@@ -8,6 +8,17 @@ Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilati
 adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 HUD as its own panel.
 
+## Version 1.0.15
+
+- Fixes the crash right after **Start** ("The game stopped unexpectedly (code -1073741819)") that hit many graphics
+  cards. Four of the game's shaders described one of their inputs wrongly to the graphics driver. Only the newest
+  NVIDIA cards and drivers took a path where that did not matter; on every other card it depended on the driver, and
+  NVIDIA's crashed. It is described right now, so it no longer depends on your card.
+- If the game's graphics cannot start on the graphics card Link uses, the game now stops at once and says what to do.
+  Before, it ran on without a picture and closed by itself some minutes later.
+- **Report a problem** now also saves your graphics card, driver, processor and memory, the game's own crash record and
+  the crash records Windows keeps for the game, and says where to send it: **contact@aether-xr.com**.
+
 ## Version 1.0.14
 
 - No more black shadow behind the fighters and the aiming ray in the headset. The slightly offset dark edge came from
@@ -190,6 +201,13 @@ Also:
 The mod uses **your own room**: while the game runs it asks your headset for its Space Setup (walls, floor, ceiling,
 furniture) over Link. It keeps that in memory only: nothing of your room is saved to disk or sent anywhere, and no
 room is included in the package.
+
+## Something does not work?
+
+Press **Report a problem** in the AETHER AR window. It saves `AETHER-AR-report-<date>.zip` on your desktop: AETHER AR's
+logs and settings, your graphics card, driver, processor and memory, and the crash records Windows keeps for the game.
+Nothing of your room and nothing of the game is in it. Email that file to **contact@aether-xr.com**, with a sentence
+about what happened.
 
 ## Known limits
 

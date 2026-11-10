@@ -31,10 +31,10 @@ index 0000000000000000000000000000000000000000..9939fa580dce5e971fa64e5a87d58c83
 +start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0ar\AetherAR.ps1"
 diff --git a/ar/AetherAR.ps1 b/ar/AetherAR.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64595c5ded
+index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9836588f0
 --- /dev/null
 +++ b/ar/AetherAR.ps1
-@@ -0,0 +1,771 @@
+@@ -0,0 +1,799 @@
 +# AETHER AR -- the launcher window. Once installed it is a player window: the disc and the PC's Link app checked (and
 +# Link's passthrough edge fix: no black shadow behind the fighters), the mode, Start / Restart / Stop, what the game is
 +# doing, how to play (Options, Help, Report a problem below). Not installed yet (a fresh clone): 1 the ISO, 2 Install,
@@ -63,7 +63,7 @@ index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64
 +[System.Windows.Forms.Application]::SetUnhandledExceptionMode('CatchException')
 +[System.Windows.Forms.Application]::add_ThreadException({ param($s, $e)
 +    try { [IO.File]::AppendAllText($launcherErr, "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') window error: $($e.Exception.Message)`r`n") } catch { }
-+    Say-Box "Something went wrong in the AETHER AR window:`n`n$($e.Exception.Message)`n`nIf it happens again, press Report a problem and send the ZIP." 'Error' | Out-Null })
++    Say-Box "Something went wrong in the AETHER AR window:`n`n$($e.Exception.Message)`n`nIf it happens again, press Report a problem and email the ZIP to contact@aether-xr.com." 'Error' | Out-Null })
 +
 +$version = $(try { (Get-Content (Join-Path $ar 'VERSION') -TotalCount 1 -ErrorAction Stop).Trim() } catch { '' })
 +$title = "AETHER AR $version".Trim()
@@ -568,7 +568,8 @@ index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64
 +    New-Item -ItemType Directory -Force -Path $stage | Out-Null
 +    $logs = Join-Path $root 'build\ps2xRuntime\logs'
 +    $files = [ordered]@{ 'status.txt' = $statusFile; 'config.json' = $cfgPath; 'install.log' = $installLog; 'setup.log' = (Join-Path $root 'build\setup.log')
-+                         'bt3.log' = (Join-Path $logs 'bt3.log'); 'bt3.prev.log' = (Join-Path $logs 'bt3.prev.log'); 'ar-error.txt' = $gameErr; 'launcher-error.txt' = $launcherErr }
++                         'bt3.log' = (Join-Path $logs 'bt3.log'); 'bt3.prev.log' = (Join-Path $logs 'bt3.prev.log'); 'ar-error.txt' = $gameErr; 'launcher-error.txt' = $launcherErr
++                         'wincrash.txt' = (Join-Path $logs 'wincrash.txt') }   # (the game's own crash record: module, offset, call stack)
 +    foreach ($name in $files.Keys) {
 +        $src = $files[$name]; if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
 +        # (copied with sharing: the running game keeps bt3.log open for writing)
@@ -585,6 +586,32 @@ index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64
 +    $lines = @("AETHER AR $version", "Report made $(Get-Date -Format 'yyyy-MM-dd HH:mm')", "Windows: $os", "OpenXR runtime: $(OpenXR-Runtime)",
 +               $lblDisc.Text, $lblLink.Text, $lblEdge.Text, $edgeRaw, $hs.Text, "Status: $($runState.Text)", "Mode: $($mode.Text)", "Quick start: $($quick.Checked)", "Boundary off: $($bound.Checked)", "Edge fix option: $($edgeFix.Checked)")
 +    [IO.File]::WriteAllText((Join-Path $stage 'window.txt'), (($lines -join "`r`n") + "`r`n"))
++    # [report] the PC around the game (1.0.15: a crash on other graphics cards could not be told apart without them):
++    # graphics cards + drivers, processor, memory, the crashes Windows recorded for the game, the headset model and Link's
++    # own measurements (picked fields only -- no machine or session ids). Each part on its own: one that fails is said.
++    $pc = New-Object System.Collections.Generic.List[string]
++    try { foreach ($v in @(Get-CimInstance Win32_VideoController -ErrorAction Stop)) { $pc.Add("Graphics: $($v.Name), driver $($v.DriverVersion)$(if ($v.DriverDate) { ' (' + $v.DriverDate.ToString('yyyy-MM-dd') + ')' })") } } catch { $pc.Add("Graphics: cannot be read ($($_.Exception.Message))") }
++    try { foreach ($c in @(Get-CimInstance Win32_Processor -ErrorAction Stop)) { $pc.Add("Processor: $($c.Name.Trim())") } } catch { $pc.Add('Processor: cannot be read') }
++    try { $pc.Add(('Memory: {0:0} GB' -f ((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1GB))) } catch { $pc.Add('Memory: cannot be read') }
++    try {
++        $lg = Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Oculus') -Filter 'Service_*.txt' -ErrorAction Stop | Sort-Object LastWriteTime -Descending | Select-Object -First 1
++        if ($lg) {
++            $pc.Add("Link service log: $($lg.Name)")
++            $hmd = Select-String -LiteralPath $lg.FullName -Pattern 'product name:' | Select-Object -Last 1
++            $pc.Add('Headset: ' + $(if ($hmd) { ($hmd.Line -replace '.*product name:\s*', '').Trim() } else { 'not in the log' }))
++            $keys = 'connected_hmd_type', 'transmission_type', 'codec', 'encode_width', 'encode_height', 'network_rtt_ms_p50', 'network_rtt_ms_p99', 'total_network_video_goodput_Mbps', 'num_lost_or_late_pc_presented_frames_with_high_cpu', 'pc_present_late'
++            foreach ($s in @(Select-String -LiteralPath $lg.FullName -Pattern 'oculus_pc_xrs_stats_event' | Select-Object -Last 6)) {
++                $vals = foreach ($k in $keys) { $m = [regex]::Match($s.Line, "[{ ,]$k=([^,}]*)"); if ($m.Success) { "$k=$($m.Groups[1].Value)" } }
++                $pc.Add("Link stats $(($s.Line -split ' ')[1]): $($vals -join ' ')")
++            }
++        } else { $pc.Add('Link service log: none found') }
++    } catch { $pc.Add("Link service log: cannot be read ($($_.Exception.Message))") }
++    try {
++        $ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error'; StartTime = (Get-Date).AddDays(-30) } -MaxEvents 400 -ErrorAction Stop | Where-Object { $_.Message -match 'ps2EntryRunner' } | Select-Object -First 5)
++        $pc.Add("Windows crash records for the game (last 30 days): $($ev.Count)")
++        foreach ($x in $ev) { $pc.Add("--- $($x.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))"); $pc.Add(($x.Message -replace "`r", '').Trim()) }
++    } catch { $pc.Add('Windows crash records for the game (last 30 days): none') }
++    [IO.File]::WriteAllLines((Join-Path $stage 'pc.txt'), [string[]]$pc)
 +    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 +    Add-Type -AssemblyName System.IO.Compression.FileSystem
 +    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip)
@@ -595,7 +622,8 @@ index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64
 +    $f.UseWaitCursor = $true; $f.Refresh()
 +    try { $zip = Save-Report } catch { $f.UseWaitCursor = $false; Say-Box "The report could not be saved: $($_.Exception.Message)" | Out-Null; return }
 +    $f.UseWaitCursor = $false
-+    Say-Box "Saved on your desktop:`n$([IO.Path]::GetFileName($zip))`n`nSend this file to the person you got AETHER AR from, with a sentence about what happened. It holds AETHER AR's logs and settings." 'Information' | Out-Null
++    $copied = $false; try { Set-Clipboard -Value 'contact@aether-xr.com' -ErrorAction Stop; $copied = $true } catch { }
++    Say-Box "Saved on your desktop:`n$([IO.Path]::GetFileName($zip))`n`nEmail this file to contact@aether-xr.com$(if ($copied) { ' (the address is copied: paste it into your email)' }), with a sentence about what happened.`n`nIt holds AETHER AR's logs and settings and your graphics card -- nothing of your room and nothing of the game." 'Information' | Out-Null
 +    Start-Process explorer.exe -ArgumentList "/select,`"$zip`""
 +})
 +
@@ -808,7 +836,7 @@ index 0000000000000000000000000000000000000000..cbef9f28b4c249c497dc4f8a6f42da64
 +}
 diff --git a/ar/PLAY.txt b/ar/PLAY.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..07b2b354cb486a9d936c6ce9cb938e23c68a9e0c
+index 0000000000000000000000000000000000000000..c188a40d4dcb4a3ea9322e6249a646e83269cbc5
 --- /dev/null
 +++ b/ar/PLAY.txt
 @@ -0,0 +1,164 @@
@@ -951,8 +979,8 @@ index 0000000000000000000000000000000000000000..07b2b354cb486a9d936c6ce9cb938e23
 +
 +- The game stopped unexpectedly: press Start again. If it happens again, press
 +  "Report a problem" in the AETHER AR window. It saves AETHER-AR-report-<date>.zip on
-+  your desktop (AETHER AR's logs and settings) -- send that file to the person you got
-+  AETHER AR from, with a sentence about what happened.
++  your desktop (AETHER AR's logs and settings, your graphics card) -- email that file to
++  contact@aether-xr.com, with a sentence about what happened.
 +
 +- Something else is broken: press "Repair..." in the AETHER AR window. It builds
 +  AETHER AR again from your disc and takes 30-60 minutes.
@@ -978,10 +1006,10 @@ index 0000000000000000000000000000000000000000..07b2b354cb486a9d936c6ce9cb938e23
 +   the cable is in; after that it works over Wi-Fi until the headset restarts.
 diff --git a/ar/README.md b/ar/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..0258edd9ac537082027cf742e07c0a1a08bd3853
+index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599c998325b
 --- /dev/null
 +++ b/ar/README.md
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,223 @@
 +# AETHER AR
 +
 +**An unofficial mixed-reality mod for *Dragon Ball Z: Budokai Tenkaichi 3* (PS2), for Meta Quest.** The fighters fight
@@ -991,6 +1019,17 @@ index 0000000000000000000000000000000000000000..0258edd9ac537082027cf742e07c0a1a
 +Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilation of the PS2 game, GPL-3.0). This mod
 +adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 +HUD as its own panel.
++
++## Version 1.0.15
++
++- Fixes the crash right after **Start** ("The game stopped unexpectedly (code -1073741819)") that hit many graphics
++  cards. Four of the game's shaders described one of their inputs wrongly to the graphics driver. Only the newest
++  NVIDIA cards and drivers took a path where that did not matter; on every other card it depended on the driver, and
++  NVIDIA's crashed. It is described right now, so it no longer depends on your card.
++- If the game's graphics cannot start on the graphics card Link uses, the game now stops at once and says what to do.
++  Before, it ran on without a picture and closed by itself some minutes later.
++- **Report a problem** now also saves your graphics card, driver, processor and memory, the game's own crash record and
++  the crash records Windows keeps for the game, and says where to send it: **contact@aether-xr.com**.
 +
 +## Version 1.0.14
 +
@@ -1175,6 +1214,13 @@ index 0000000000000000000000000000000000000000..0258edd9ac537082027cf742e07c0a1a
 +furniture) over Link. It keeps that in memory only: nothing of your room is saved to disk or sent anywhere, and no
 +room is included in the package.
 +
++## Something does not work?
++
++Press **Report a problem** in the AETHER AR window. It saves `AETHER-AR-report-<date>.zip` on your desktop: AETHER AR's
++logs and settings, your graphics card, driver, processor and memory, and the crash records Windows keeps for the game.
++Nothing of your room and nothing of the game is in it. Email that file to **contact@aether-xr.com**, with a sentence
++about what happened.
++
 +## Known limits
 +
 +- The fighters are 20 cm tall; other sizes may come in a later version.
@@ -1189,11 +1235,11 @@ index 0000000000000000000000000000000000000000..0258edd9ac537082027cf742e07c0a1a
 +every change it makes to BT3-Recomp at the version in `mod\BASE`.
 diff --git a/ar/VERSION b/ar/VERSION
 new file mode 100644
-index 0000000000000000000000000000000000000000..5b09c67c2066cc1cf4b56a66f4f9875115b9f4ad
+index 0000000000000000000000000000000000000000..a9707166ba785cfc8602a5300ae64206bdbd6999
 --- /dev/null
 +++ b/ar/VERSION
 @@ -0,0 +1 @@
-+1.0.14
++1.0.15
 diff --git a/ar/aether-ar.ico b/ar/aether-ar.ico
 new file mode 100644
 index 0000000000000000000000000000000000000000..3f7a821fe104d2ee4a3bfab1e0bbb291d9e9be1a
@@ -3490,7 +3536,7 @@ index 0000000000000000000000000000000000000000..5f28365cde254764ec075058abf18cc6
 +}
 diff --git a/ar/start-ar.ps1 b/ar/start-ar.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..1e9806e20b66426e2bf256fe8735c725f209979e
+index 0000000000000000000000000000000000000000..9619cca9672381b66bc4767393efb9013062a93a
 --- /dev/null
 +++ b/ar/start-ar.ps1
 @@ -0,0 +1,209 @@
@@ -3695,7 +3741,7 @@ index 0000000000000000000000000000000000000000..1e9806e20b66426e2bf256fe8735c725
 +        }
 +        if (Test-Path $flag) { Status "The headset session was lost -- starting the game again ($run)."; Start-Sleep 3; continue }
 +        if ($code -eq 0) { Status 'The game has ended. Press Start to play again.'; exit 0 }
-+        Tell "The game stopped unexpectedly (code $code). Press Start to play again. If it happens again, press Report a problem in the AETHER AR window and send the ZIP it saves on your desktop." 'Warning'
++        Tell "The game stopped unexpectedly (code $code). Press Start to play again. If it happens again, press Report a problem in the AETHER AR window and email the ZIP it saves on your desktop to contact@aether-xr.com." 'Warning'
 +        exit 0
 +    }
 +    Tell 'The headset session was lost again and again -- the game stopped. Restart Link in the headset and the Meta Horizon Link app on this PC (formerly Meta Quest Link) -- or the headset itself --, then press Start.' 'Warning'
@@ -7135,10 +7181,10 @@ index 0000000000000000000000000000000000000000..d70a2e7ab83ff98824b17367ebfb973e
 +}
 diff --git a/ps2xRuntime/src/lib/ar_xr.cpp b/ps2xRuntime/src/lib/ar_xr.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..b028c2a83932d91e6c155bc58569861afcbf9b87
+index 0000000000000000000000000000000000000000..debfc4f0ff0ae21bb2eb7006bbd25a2e4d1c7b0b
 --- /dev/null
 +++ b/ps2xRuntime/src/lib/ar_xr.cpp
-@@ -0,0 +1,2295 @@
+@@ -0,0 +1,2305 @@
 +// [arxr] See ar_xr.h. OpenXR over Meta Quest Link: Vulkan instance/device through the runtime, passthrough behind the
 +// fighters, the Mario scan's anchor located by UUID so game space sits in the real room.
 +#include "ar_xr.h"
@@ -8714,6 +8760,7 @@ index 0000000000000000000000000000000000000000..b028c2a83932d91e6c155bc58569861a
 +        const char *kNoRoom = "No room came from the headset. In the headset: Settings > Physical space > Space setup -- set up this room (walls, desk / table, couch). In the Meta Horizon Link app on the PC: Settings > Beta > 'Spatial data over Meta Quest Link' must be on. Then press Start again (or choose Mode: Screen to play without the room).";
 +        const char *kLinkClock = "The Meta Horizon Link app on this PC lacks a function the game needs (the PC clock for the headset's room). Update the Meta Horizon Link app, check that it is the active OpenXR runtime (Settings > General), then press Start again.";
 +        const char *kLink = "Link did not give the game a headset session. Turn Link off and on in the headset (or restart the headset and the Meta Horizon Link app on the PC), then press Start again.";
++        const char *kRenderer = "The game could not start its graphics on the graphics card Link uses. Update your graphics driver, restart the Meta Horizon Link app on the PC, then press Start again. If it happens again, press Report a problem in the AETHER AR window and email the ZIP it saves on your desktop to contact@aether-xr.com.";
 +    }
 +    void status(const char *m)
 +    {
@@ -8748,6 +8795,15 @@ index 0000000000000000000000000000000000000000..b028c2a83932d91e6c155bc58569861a
 +            const char *scan = std::getenv("PS2X_AR_SCAN"); return !(scan && scan[0] && std::strcmp(scan, "none") != 0);
 +        }();
 +        return s;
++    }
++
++    // [arfail] the native renderer could not start on the runtime's GPU: without it the headset gets no picture and the
++    // captured frames pile up unread (60 MB/s until the process ran out of memory, crash test 10.11.) -- so the game ends
++    // with the reason instead
++    [[noreturn]] void failRenderer(const char *why)
++    {
++        std::fprintf(stderr, "[arxr] native renderer unavailable: %s\n", why ? why : "?");
++        fail(msg::kRenderer);
 +    }
 +
 +    bool wanted() { static const bool s = [](){ const char *v = std::getenv("PS2X_AR_XR"); return v && v[0] == '1'; }(); return s; }
@@ -9436,10 +9492,10 @@ index 0000000000000000000000000000000000000000..b028c2a83932d91e6c155bc58569861a
 +#endif
 diff --git a/ps2xRuntime/src/lib/ar_xr.h b/ps2xRuntime/src/lib/ar_xr.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..14ee86fa6babf3c06ee3b7eb3f615bfd2a8bbf21
+index 0000000000000000000000000000000000000000..61da05034214df7a43e219379e7ced19815224ce
 --- /dev/null
 +++ b/ps2xRuntime/src/lib/ar_xr.h
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,75 @@
 +// [arxr] The AR headset output: OpenXR over Meta Quest Link, Vulkan through Granite, passthrough behind the fighters.
 +//
 +// Off unless PS2X_AR_XR=1. Then the native renderer's Vulkan instance and device are created by the OpenXR runtime
@@ -9466,6 +9522,8 @@ index 0000000000000000000000000000000000000000..14ee86fa6babf3c06ee3b7eb3f615bfd
 +    VkDevice createDevice(VkPhysicalDevice gpu, const VkDeviceCreateInfo *ci);   // through xrCreateVulkanDeviceKHR
 +    // after the device: session, spaces, passthrough, swapchains (wrapped as Granite images)
 +    bool postDevice(Vulkan::Device &dev);
++    // [arfail] the native renderer could not start on the runtime's GPU: the reason to the launcher, exit code 44
++    [[noreturn]] void failRenderer(const char *why);
 +
 +    // Per renderer frame. beginFrame waits for the runtime's frame slot and locates the eyes; it returns false when the
 +    // session is not presenting (the desktop window keeps working). eyeVP: game space -> clip (x right, y DOWN, reverse-Z:
@@ -10055,7 +10113,7 @@ index 7d73e40fcc66ceeb0832cd9ad9494c043c31adff..503f53e6fb34e536034b32e6789ab6a7
                  {
                      std::fprintf(stderr, "[hostaudio] SDL_OpenAudioDevice failed: %s -- falling back to raylib\n",
 diff --git a/ps2xRuntime/src/lib/ps2_seamvk.cpp b/ps2xRuntime/src/lib/ps2_seamvk.cpp
-index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3373708a4 100644
+index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20df9005e5 100644
 --- a/ps2xRuntime/src/lib/ps2_seamvk.cpp
 +++ b/ps2xRuntime/src/lib/ps2_seamvk.cpp
 @@ -13,6 +13,18 @@
@@ -10563,22 +10621,30 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
              VkDeviceSize off = (g_gpu.coff + 255u) & ~VkDeviceSize(255u);
              if (off + bytes > kCringBytes) { static int s_warn = 0; if (s_warn++ < 3) std::fprintf(stderr, "[seamvk] constants ring full (%zu chunks)\n", n); return false; }
              std::memcpy(g_gpu.cmap[s] + off, arr, bytes);
-@@ -266,12 +728,14 @@ namespace seamvk
+@@ -266,20 +728,49 @@ namespace seamvk
              {
                  Vulkan::ResourceLayout vl = {}, fl = {};
                  vl.sets[0].storage_buffer_mask = 1u << 0; vl.sets[0].meta[0].array_size = 1;   // [batch] per-chunk constants array (SSBO ring)
 +                vl.sets[0].uniform_buffer_mask = 1u << 6; vl.sets[0].meta[6].array_size = 1;   // [arportal] the cut's clip planes
                  vl.input_mask = 0xFu; vl.output_mask = 0x1Fu; vl.push_constant_size = sizeof(PC);   // [spriterect] varying 4
-                 fl.sets[0].sampled_image_mask = (1u << 1) | (1u << 2); fl.sets[0].meta[1].array_size = 1; fl.sets[0].meta[2].array_size = 1;
+-                fl.sets[0].sampled_image_mask = (1u << 1) | (1u << 2); fl.sets[0].meta[1].array_size = 1; fl.sets[0].meta[2].array_size = 1;
++                fl.sets[0].sampled_image_mask = 1u << 1; fl.sets[0].input_attachment_mask = 1u << 2; fl.sets[0].meta[1].array_size = 1; fl.sets[0].meta[2].array_size = 1;   // 2 = uDst, a subpassInput
                  fl.input_mask = 0x1Fu; fl.output_mask = 0x1u; fl.push_constant_size = sizeof(PC);
                  g_gpu.progSeam = dev.request_program(kSeamVert, sizeof(kSeamVert), kGsFrag, sizeof(kGsFrag), &vl, &fl);
                  Vulkan::ResourceLayout gl = {};
                  gl.input_mask = 0x1Fu; gl.output_mask = 0x1Fu; gl.push_constant_size = sizeof(PC);   // [spriterect] attribute 4 (the rect), varying 4
 +                gl.sets[0].uniform_buffer_mask = 1u << 5; gl.sets[0].meta[5].array_size = 1;   // [arcam] ArGs (EE-built 3D effects through the AR camera)
                  g_gpu.progGs = dev.request_program(kGsVert, sizeof(kGsVert), kGsFragNp, sizeof(kGsFragNp), &gl, &fl);
-                 g_gpu.progSeamSt = dev.request_program(kSeamVert, sizeof(kSeamVert), kGsFragSt, sizeof(kGsFragSt), &vl, &fl);   // [stencildate] variants exporting the stored alpha bit to stencil
-                 g_gpu.progGsSt = dev.request_program(kGsVert, sizeof(kGsVert), kGsFragNpSt, sizeof(kGsFragNpSt), &gl, &fl);
-@@ -280,6 +744,29 @@ namespace seamvk
+-                g_gpu.progSeamSt = dev.request_program(kSeamVert, sizeof(kSeamVert), kGsFragSt, sizeof(kGsFragSt), &vl, &fl);   // [stencildate] variants exporting the stored alpha bit to stencil
+-                g_gpu.progGsSt = dev.request_program(kGsVert, sizeof(kGsVert), kGsFragNpSt, sizeof(kGsFragNpSt), &gl, &fl);
++                if (stencilDate())
++                {   // [stencildate] variants exporting the stored alpha bit to stencil -- only made when the experiment is on: their
++                    // SPIR-V declares StencilExportEXT, which a device without VK_EXT_shader_stencil_export must not be given
++                    g_gpu.progSeamSt = dev.request_program(kSeamVert, sizeof(kSeamVert), kGsFragSt, sizeof(kGsFragSt), &vl, &fl);
++                    g_gpu.progGsSt = dev.request_program(kGsVert, sizeof(kGsVert), kGsFragNpSt, sizeof(kGsFragNpSt), &gl, &fl);
++                }
+                 Vulkan::ResourceLayout pv = {}, pf = {};
+                 pv.output_mask = 0x1u; pv.push_constant_size = sizeof(PresentPC);
                  pf.sets[0].sampled_image_mask = 1u << 0; pf.sets[0].meta[0].array_size = 1;
                  pf.input_mask = 0x1u; pf.output_mask = 0x1u; pf.push_constant_size = sizeof(PresentPC);
                  g_gpu.progPresent = dev.request_program(kPresentVert, sizeof(kPresentVert), kPresentFrag, sizeof(kPresentFrag), &pv, &pf);
@@ -10608,7 +10674,38 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  Vulkan::ResourceLayout rv = {}, rf = {};
                  rv.output_mask = 0x0u; rf.output_mask = 0x1u; rf.push_constant_size = sizeof(RtPC); rv.push_constant_size = sizeof(RtPC);
                  rf.sets[0].sampled_image_mask = (1u << 0) | (1u << 1); rf.sets[0].meta[0].array_size = 1; rf.sets[0].meta[1].array_size = 1;
-@@ -337,6 +824,7 @@ namespace seamvk
+@@ -297,7 +788,7 @@ namespace seamvk
+                 Vulkan::ResourceLayout av = {}, af = {};   // alias16: fullscreen triangle, target as input attachment (binding 2), texture (1), rects (0)
+                 av.output_mask = 0x0u; av.push_constant_size = sizeof(AliasPC);
+                 af.sets[0].uniform_buffer_mask = 1u << 0; af.sets[0].meta[0].array_size = 1;
+-                af.sets[0].sampled_image_mask = (1u << 1) | (1u << 2); af.sets[0].meta[1].array_size = 1; af.sets[0].meta[2].array_size = 1;
++                af.sets[0].sampled_image_mask = 1u << 1; af.sets[0].input_attachment_mask = 1u << 2; af.sets[0].meta[1].array_size = 1; af.sets[0].meta[2].array_size = 1;   // 2 = uDst, a subpassInput
+                 af.output_mask = 0x1u; af.push_constant_size = sizeof(AliasPC);
+                 g_gpu.progAlias = dev.request_program(kRtVert, sizeof(kRtVert), kAliasFrag, sizeof(kAliasFrag), &av, &af);
+                 Vulkan::ResourceLayout ov = {}, of = {};   // outline: fullscreen triangle, Ztop texture (1), CLUT (0)
+@@ -317,18 +808,18 @@ namespace seamvk
+                     Vulkan::ResourceLayout av = {}, af = {};
+                     av.output_mask = 0x0u; av.push_constant_size = 16;
+                     af.sets[0].uniform_buffer_mask = 1u << 0; af.sets[0].meta[0].array_size = 1;
+-                    af.sets[0].sampled_image_mask = (1u << 1) | (1u << 2); af.sets[0].meta[1].array_size = 1; af.sets[0].meta[2].array_size = 1;
++                    af.sets[0].sampled_image_mask = 1u << 1; af.sets[0].input_attachment_mask = 1u << 2; af.sets[0].meta[1].array_size = 1; af.sets[0].meta[2].array_size = 1;   // 2 = uDst, a subpassInput
+                     af.output_mask = 0x1u; af.push_constant_size = 16;
+                     g_gpu.progClutPass = dev.request_program(kRtVert, sizeof(kRtVert), kClutPassFrag, sizeof(kClutPassFrag), &av, &af);
+                 }
+                 {   // [postnative] step 4b: the 0x2a00 texture (1) + the destination as input attachment (2), as gs.frag's DATE read
+                     Vulkan::ResourceLayout cv = {}, cf = {};
+                     cv.output_mask = 0x0u; cv.push_constant_size = 8;
+-                    cf.sets[0].sampled_image_mask = (1u << 1) | (1u << 2) | (1u << 3); cf.sets[0].meta[1].array_size = 1; cf.sets[0].meta[2].array_size = 1; cf.sets[0].meta[3].array_size = 1;   // [dofgraded] 3 = the depth image
++                    cf.sets[0].sampled_image_mask = (1u << 1) | (1u << 3); cf.sets[0].input_attachment_mask = 1u << 2; cf.sets[0].meta[1].array_size = 1;   // 2 = uDst, a subpassInput cf.sets[0].meta[2].array_size = 1; cf.sets[0].meta[3].array_size = 1;   // [dofgraded] 3 = the depth image
+                     cf.output_mask = 0x1u; cf.push_constant_size = 8;
+                     g_gpu.progGlowComp = dev.request_program(kRtVert, sizeof(kRtVert), kGlowCompFrag, sizeof(kGlowCompFrag), &cv, &cf);
+                 }
+-                if (!g_gpu.progSeam || !g_gpu.progGs || !g_gpu.progSeamSt || !g_gpu.progGsSt || !g_gpu.progPresent || !g_gpu.progRt || !g_gpu.progAlias || !g_gpu.progOutline || !g_gpu.progOutlineH || !g_gpu.progDepthMask || !g_gpu.progVram || !g_gpu.vram) { g_gpu.failed = true; std::fprintf(stderr, "[seamvk] shader program creation FAILED\n"); return false; }
++                if (!g_gpu.progSeam || !g_gpu.progGs || (stencilDate() && (!g_gpu.progSeamSt || !g_gpu.progGsSt)) || !g_gpu.progPresent || !g_gpu.progRt || !g_gpu.progAlias || !g_gpu.progOutline || !g_gpu.progOutlineH || !g_gpu.progDepthMask || !g_gpu.progVram || !g_gpu.vram) { g_gpu.failed = true; std::fprintf(stderr, "[seamvk] shader program creation FAILED\n"); return false; }
+                 const uint32_t whitePx = 0xFFFFFFFFu;
+                 Vulkan::ImageInitialData init = { &whitePx, 0, 0 };
+                 g_gpu.white = dev.create_image(Vulkan::ImageCreateInfo::immutable_2d_image(1, 1, VK_FORMAT_R8G8B8A8_UNORM), &init);
+@@ -337,6 +828,7 @@ namespace seamvk
              {
                  auto ci = Vulkan::ImageCreateInfo::render_target(w, h, VK_FORMAT_R8G8B8A8_UNORM);
                  ci.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -10616,7 +10713,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  g_gpu.out = dev.create_image(ci);
                  Vulkan::BufferCreateInfo bi = {};
                  bi.size = VkDeviceSize(w) * h * 4u;
-@@ -425,6 +913,16 @@ namespace seamvk
+@@ -425,6 +917,16 @@ namespace seamvk
                  cmd.image_barrier(*t.img, gl(t, want), gl(t, want), st, ac, st, ac);
              t.layout = want;
          }
@@ -10633,7 +10730,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
          void toSampled(Vulkan::CommandBuffer &cmd, Target &t)
          {
              if (t.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) return;
-@@ -1072,7 +1570,11 @@ namespace seamvk
+@@ -1072,7 +1574,11 @@ namespace seamvk
              const seamgs::Draw &d = *dp;
              const seamgs::State &t = d.st;
              static const VkCompareOp ops[4] = { VK_COMPARE_OP_NEVER, VK_COMPARE_OP_ALWAYS, VK_COMPARE_OP_GREATER_OR_EQUAL, VK_COMPARE_OP_GREATER };
@@ -10646,7 +10743,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
              cmd.set_depth_compare(t.zte ? ops[t.ztst & 3u] : VK_COMPARE_OP_ALWAYS);
              VkBlendFactor sf = VK_BLEND_FACTOR_ONE, df = VK_BLEND_FACTOR_ZERO; VkBlendOp op = VK_BLEND_OP_ADD;
              static const int s_noBlend = [](){ const char *v = std::getenv("PS2X_SEAMVK_NOBLEND"); return v && v[0] ? std::atoi(v) : 0; }();
-@@ -1090,6 +1592,9 @@ namespace seamvk
+@@ -1090,6 +1596,9 @@ namespace seamvk
              if ((t.fbmsk & 0x0000FF00u) != 0x0000FF00u) mask |= VK_COLOR_COMPONENT_G_BIT;
              if ((t.fbmsk & 0x00FF0000u) != 0x00FF0000u) mask |= VK_COLOR_COMPONENT_B_BIT;
              if ((t.fbmsk & 0xFF000000u) != 0xFF000000u) mask |= VK_COLOR_COMPONENT_A_BIT;
@@ -10656,7 +10753,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
              const bool alphaWritten = (mask & VK_COLOR_COMPONENT_A_BIT) != 0u;
              if (mode == 2) mask = 0;   // the DATE stencil pass writes stencil only
              cmd.set_color_write_mask(mask);
-@@ -1098,7 +1603,7 @@ namespace seamvk
+@@ -1098,7 +1607,7 @@ namespace seamvk
                  cmd.set_stencil_test(true);
                  if (mode == 1)      { cmd.set_stencil_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP); cmd.set_stencil_reference(0x01u, 0x00u, t.datm ? 1u : 0u); }
                  else if (mode == 2) { cmd.set_stencil_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP); cmd.set_stencil_reference(0x01u, 0xFFu, t.datm ? 1u : 0u);
@@ -10665,7 +10762,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  else                { cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP); cmd.set_stencil_reference(0xFFu, alphaWritten ? 0xFFu : 0x00u, 0u); }
              }
              else cmd.set_stencil_test(false);
-@@ -1288,6 +1793,9 @@ namespace seamvk
+@@ -1288,6 +1797,9 @@ namespace seamvk
                                   dual ? "on" : "MISSING", clip ? "on" : "MISSING", haveStencil ? "on" : "not advertised",
                                   (dual && clip) ? "" : " -- the native renderer will misdraw (As blends, VU1 clipping)");
                  }
@@ -10675,25 +10772,33 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  VkDevice dev = VK_NULL_HANDLE;
                  if (vkCreateDevice(gpu, &ci, nullptr, &dev) != VK_SUCCESS) return VK_NULL_HANDLE;
                  return dev;
-@@ -1313,13 +1821,27 @@ namespace seamvk
+@@ -1313,13 +1825,34 @@ namespace seamvk
              if (!Vulkan::Context::init_loader(nullptr)) return fail("Vulkan loader init failed");
              g_own->ctx.set_num_thread_indices(1);
              g_own->ctx.set_device_factory(&g_own->factory);   // [seamfeat]
 -            if (!g_own->ctx.init_instance_and_device(nullptr, 0, nullptr, 0,
 -                                                     Vulkan::CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
-+            const Vulkan::ContextCreationFlags ccf = Vulkan::CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT |
-                                                      Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT |
+-                                                     Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT |
 -                                                     Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT))
-+                                                     Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT;
++            // [descsel] Granite's descriptor model: VK_EXT_descriptor_heap where the driver has it (2026: RTX 50 only), else
++            // descriptor buffers, else classic sets. Most players are on the last two, so every layout must be right for
++            // them (1.0.15: binding 2 of the DATE / blend shaders is an input attachment, not a sampled image -- declared as
++            // one, NVIDIA's driver crashed on the null sampler). QA: PS2X_SEAMVK_DESCRIPTORS=heap|buffer|classic forces one.
++            const char *descSel = std::getenv("PS2X_SEAMVK_DESCRIPTORS");
++            Vulkan::ContextCreationFlags ccf = Vulkan::CONTEXT_CREATION_ENABLE_PUSH_DESCRIPTOR_BIT;
++            if (!descSel || !descSel[0] || !std::strcmp(descSel, "heap")) ccf |= Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_HEAP_BIT | Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT;
++            else if (!std::strcmp(descSel, "buffer")) ccf |= Vulkan::CONTEXT_CREATION_ENABLE_DESCRIPTOR_BUFFER_BIT;
++            std::fprintf(stderr, "[seamvk] descriptor model request: %s\n", descSel && descSel[0] ? descSel : "heap+buffer (default)");
 +            bool xr = false;
 +#if defined(PS2X_HAVE_ARXR)
 +            xr = arxr::preVulkan();   // [arxr] the headset: instance and device through the OpenXR runtime, on ITS GPU
 +            if (xr)
 +            {
 +                g_own->ctx.set_instance_factory(arxr::instanceFactory());
-+                if (!g_own->ctx.init_instance(nullptr, 0, ccf)) return fail("Vulkan instance (OpenXR) init failed");
++                // (no picture in the headset without this renderer: the game ends with the reason, never runs on blind)
++                if (!g_own->ctx.init_instance(nullptr, 0, ccf)) { fail("Vulkan instance (OpenXR) init failed"); arxr::failRenderer("Vulkan instance (OpenXR) init failed"); }
 +                const VkPhysicalDevice gpu = arxr::physicalDevice(g_own->ctx.get_instance());
-+                if (!gpu || !g_own->ctx.init_device(gpu, VK_NULL_HANDLE, nullptr, 0, ccf)) return fail("Vulkan device (OpenXR) init failed");
++                if (!gpu || !g_own->ctx.init_device(gpu, VK_NULL_HANDLE, nullptr, 0, ccf)) { fail("Vulkan device (OpenXR) init failed"); arxr::failRenderer(gpu ? "Vulkan device (OpenXR) init failed" : "the runtime named no GPU (xrGetVulkanGraphicsDevice2KHR)"); }
 +            }
 +#endif
 +            if (!xr && !g_own->ctx.init_instance_and_device(nullptr, 0, nullptr, 0, ccf))
@@ -10706,7 +10811,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
              g_own->failed = false; g_own->inited = true;
              std::fprintf(stderr, "[seamvk] own Vulkan device: %s (no paraLLEl-GS backend)\n", g_own->dev.get_gpu_properties().deviceName);
              return true;
-@@ -1627,6 +2149,9 @@ namespace seamvk
+@@ -1627,6 +2160,9 @@ namespace seamvk
                  }
              tsMark(*cmd, 0);
          }
@@ -10716,7 +10821,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
          const auto tL0 = std::chrono::steady_clock::now();
          // ---- the ordered draws, into their FRAME / ZBUF targets ----
          uint32_t curFbp = ~0u, curZbp = ~0u; bool inPass = false;
-@@ -1638,11 +2163,16 @@ namespace seamvk
+@@ -1638,11 +2174,16 @@ namespace seamvk
          static const bool s_batch = [](){ const char *v = std::getenv("PS2X_SEAMVK_BATCH"); return !(v && v[0] == '0'); }();   // [batch] merge seam chunks (=0: one draw per chunk)
          static const std::vector<uint32_t> s_dumpAt = [](){ std::vector<uint32_t> v; if (const char *e = std::getenv("PS2X_SEAMVK_DUMPAT")) { const char *p = e; while (*p) { v.push_back((uint32_t)std::strtoul(p, (char **)&p, 10)); while (*p == ',' || *p == ' ') ++p; } } std::sort(v.begin(), v.end()); return v; }();
          size_t drawIdx = 0;
@@ -10734,7 +10839,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
              static size_t s_dumpAtNext = 0;   // the listed indices in ascending order; a dump fires at the first draw AT OR AFTER each (batched host draws skip indices)
              if (dumpNow && di == 0) s_dumpAtNext = 0;
              if (dumpNow && s_dumpAtNext < s_dumpAt.size() && (uint32_t)di >= s_dumpAt[s_dumpAtNext] && std::getenv("PS2X_SEAMVK_TEXDUMP"))
-@@ -1741,12 +2271,14 @@ namespace seamvk
+@@ -1741,12 +2282,14 @@ namespace seamvk
                  rp.num_color_attachments = 1;
                  rp.color_attachments[0] = &ct.img->get_view();
                  rp.store_attachments = 1u << 0;
@@ -10751,7 +10856,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  dt.cleared = true;
                  rp.clear_depth_stencil.depth = 0.0f; rp.clear_depth_stencil.stencil = 0;
                  // [date] one subpass whose colour attachment is also its input attachment: Granite emits the colour
-@@ -1754,6 +2286,117 @@ namespace seamvk
+@@ -1754,6 +2297,117 @@ namespace seamvk
                  // by-region barrier, with no pass break and no copy.
                  static Vulkan::RenderPassInfo::Subpass s_sub = [](){ Vulkan::RenderPassInfo::Subpass sp; sp.num_color_attachments = 1; sp.color_attachments[0] = 0; sp.num_input_attachments = 1; sp.input_attachments[0] = 0; sp.depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite; return sp; }();
                  rp.subpasses = &s_sub; rp.num_subpasses = 1;
@@ -10869,7 +10974,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  cmd->begin_render_pass(rp);
                  cmd->set_opaque_state();   // Granite's fresh state has a zero colour write mask
                  cmd->set_cull_mode(VK_CULL_MODE_NONE);
-@@ -1772,6 +2415,7 @@ namespace seamvk
+@@ -1772,6 +2426,7 @@ namespace seamvk
                      VkRect2D sr = {}; sr.extent.width = ct.img->get_width(); sr.extent.height = ct.img->get_height();
                      cmd->set_scissor(sr);
                  }
@@ -10877,7 +10982,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                  inPass = true; ++g_gpu.passes;
                  curFbp = t.fbp; curZbp = zbp;
              }
-@@ -1801,6 +2445,7 @@ namespace seamvk
+@@ -1801,6 +2456,7 @@ namespace seamvk
                  if (d.kind == 0)
                  {
                      cmd->set_program(st ? g_gpu.progGsSt : g_gpu.progGs);
@@ -10885,7 +10990,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                      cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
                      cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
                      cmd->set_vertex_attrib(1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 16);
-@@ -1815,16 +2460,19 @@ namespace seamvk
+@@ -1815,16 +2471,19 @@ namespace seamvk
                  else
                  {
                      cmd->set_program(st ? g_gpu.progSeamSt : g_gpu.progSeam);
@@ -10907,7 +11012,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                      const float zero = 0.0f; cmd->push_constants(&zero, offsetof(PC, texInfo) + 8u, 4u);
                      void *vb = cmd->allocate_vertex_data(0, VkDeviceSize(64) * d.count, 64);
                      uint8_t *dst = static_cast<uint8_t *>(vb);
-@@ -1872,12 +2520,13 @@ namespace seamvk
+@@ -1872,12 +2531,13 @@ namespace seamvk
                      const seamgs::Draw &d0 = f.draws[b[0]];
                      bindDraw(*cmd, d0, sc, 0);
                      cmd->set_program(stencilDate() ? g_gpu.progSeamSt : g_gpu.progSeam);
@@ -10922,7 +11027,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                      uint32_t total = 0; for (uint32_t k : b) total += f.draws[k].count + 2u;
                      // vertices stay at their 48-byte source stride, one block copy per chunk; the chunk index is found by
                      // vertex range in the shader (Consts.range.x), so nothing is written per vertex
-@@ -1887,8 +2536,9 @@ namespace seamvk
+@@ -1887,8 +2547,9 @@ namespace seamvk
                      for (size_t k = 0; k < b.size(); ++k)
                      {
                          const seamgs::Draw &e = f.draws[b[k]];
@@ -10934,7 +11039,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
                          const uint8_t *src = f.verts.data() + e.vertOff;
                          if (k) { std::memcpy(vb + size_t(o) * 48u, src, 48u); ++o; }                                              // degenerate join: this chunk's first vertex ...
                          std::memcpy(vb + size_t(o) * 48u, src, size_t(e.count) * 48u); o += e.count;
-@@ -1912,6 +2562,185 @@ namespace seamvk
+@@ -1912,6 +2573,185 @@ namespace seamvk
          if (inPass) cmd->end_render_pass();
          g_gpu.msLoop += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tL0).count();
          tsMark(*cmd, 4);
@@ -11120,7 +11225,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
  
          // ---- compose the CRTC circuits into the output frame ----
          const uint32_t en1 = (uint32_t)(priv.pmode & 1u), en2 = (uint32_t)((priv.pmode >> 1) & 1u);
-@@ -1954,6 +2783,79 @@ namespace seamvk
+@@ -1954,6 +2794,79 @@ namespace seamvk
              if (en1) composeCircuit(*cmd, priv.dispfb1, priv.display1, (en2 && !sameBuf) ? (mmod ? alp / 255.0f : 0.5f) : 1.0f, en2 && !sameBuf, f, 0);
              cmd->end_render_pass();
          }
@@ -11200,7 +11305,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..bf7c626c7e426a5d27a45c422456cac3
          cmd->image_barrier(*g_gpu.out, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
-@@ -2106,3 +3008,6 @@ namespace seamvk
+@@ -2106,3 +3019,6 @@ namespace seamvk
          }
      }
  }
