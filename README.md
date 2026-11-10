@@ -31,8 +31,10 @@ Air Link), the Quest and Link settings, the controls and the troubleshooting are
 
 ## Help
 
-- **Something does not work:** open an issue (**[New issue](../../issues/new/choose)**). The form says which log to
-  attach. In the AETHER AR window, **Report a problem** saves everything a helper needs as one ZIP on your desktop.
+- **Something does not work:** in the AETHER AR window, press **Report a problem**. It saves everything needed to find
+  the cause as one ZIP on your desktop (logs, settings, your graphics card -- nothing of your room or the game). Email
+  that ZIP to **contact@aether-xr.com** with a sentence about what happened, or open an issue
+  (**[New issue](../../issues/new/choose)**) and attach it there.
 - **Questions, ideas, your recordings:** **[Discussions](../../discussions)**.
 - **Videos and news:** **[AE.T.HE.R on YouTube](https://www.youtube.com/@AE.T.HE.R)**.
 - **Never post, link or ask for disc images, BIOS files or game files.** Posts that do are deleted.
