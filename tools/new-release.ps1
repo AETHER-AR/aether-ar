@@ -81,7 +81,7 @@ $changes
 
 **Bring your own disc:** you need your own *Budokai Tenkaichi 3* (PS2, USA, SLUS-21678) as an ISO. Nothing of the game is included; never post or ask for disc images.
 
-Something does not work? [Open an issue](https://github.com/$slug/issues/new/choose) and attach the ZIP from *Report a problem*.
+Something does not work? Press *Report a problem* in the AETHER AR window and email the ZIP it saves to **contact@aether-xr.com**, or [open an issue](https://github.com/$slug/issues/new/choose) and attach it there.
 "@)
 if ($NoPush) { "-NoPush: nothing uploaded. Later: git push origin HEAD $tag, then gh release create $tag `"$Zip`" --notes-file `"$notes`""; return }
 
