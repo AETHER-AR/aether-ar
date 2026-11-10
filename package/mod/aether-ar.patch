@@ -31,10 +31,10 @@ index 0000000000000000000000000000000000000000..9939fa580dce5e971fa64e5a87d58c83
 +start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0ar\AetherAR.ps1"
 diff --git a/ar/AetherAR.ps1 b/ar/AetherAR.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9836588f0
+index 0000000000000000000000000000000000000000..45489ca11b882431b8fad52dc7c80c8d2cbba5f9
 --- /dev/null
 +++ b/ar/AetherAR.ps1
-@@ -0,0 +1,799 @@
+@@ -0,0 +1,837 @@
 +# AETHER AR -- the launcher window. Once installed it is a player window: the disc and the PC's Link app checked (and
 +# Link's passthrough edge fix: no black shadow behind the fighters), the mode, Start / Restart / Stop, what the game is
 +# doing, how to play (Options, Help, Report a problem below). Not installed yet (a fresh clone): 1 the ISO, 2 Install,
@@ -103,6 +103,8 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +# Restart-AetherLinkServer) in this window's own scope; without them its line says so (Update-EdgeLine)
 +$script:edgeHelpers = $false
 +if (Test-Path -LiteralPath $scHelper) { try { . $scHelper; $script:edgeHelpers = [bool](Get-Command Get-AetherLinkEdge -ErrorAction SilentlyContinue) } catch { } }
++# (smooth Link over the cable, 1.0.16: Enable-/Disable-AetherLinkRateFix, Get-AetherLinkRate from the same file)
++$script:rateHelpers = $script:edgeHelpers -and [bool](Get-Command Get-AetherLinkRate -ErrorAction SilentlyContinue)
 +
 +$cfgPath = Join-Path $ar 'config.json'
 +$installLog = Join-Path $ar 'install.log'
@@ -275,7 +277,8 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +$readyTip = New-Object System.Windows.Forms.ToolTip; $readyTip.AutoPopDelay = 30000
 +$readyTip.SetToolTip($repairB, 'Builds AETHER AR again from your disc. Only needed if something is broken -- takes 30-60 min.')
 +$edgeTipText = "Meta Horizon Link sends the headset the picture's transparency at a lower size and stretches it back slightly wrong:`na black, slightly offset shadow behind the fighters and the aiming ray. AETHER AR turns on Link's own setting for it`n(for your Windows user only). Link reads it when it starts, so Link restarts once after it changes. Off: Options."
-+$readyTip.SetToolTip($lblEdge, $edgeTipText)
++$rateTipText = "Started from the headset's Quick Settings, Link over the cable sends a fixed 200 Mbit/s that the Quest cannot decode in time:`nthe picture, the HUD and every button lag more and more. AETHER AR sets Link to a steady 100 Mbit/s (a Meta Horizon Link setting`nfor your Windows user). Link reads it when it starts, so Link restarts once after it changes. On Air Link with weak Wi-Fi: turn it off in Options."
++$readyTip.SetToolTip($lblEdge, $edgeTipText + "`n`n" + $rateTipText)
 +
 +# the install's log: only while an install runs or after one failed (an empty black box looked broken -- audit 01.11.)
 +$pLog = Row 124
@@ -367,16 +370,19 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +$helpTip = New-Object System.Windows.Forms.ToolTip
 +$helpTip.SetToolTip($help, 'Open the illustrated Quest-to-PS2 controller guide.')
 +$report = Button 'Report a problem' 276 34 170 34 $false $pBottom
-+$pOpts = Row 232
-+$optBox = New-Object System.Windows.Forms.Panel; $optBox.Location = New-Object System.Drawing.Point(24, 0); $optBox.Size = New-Object System.Drawing.Size(662, 222); $optBox.BackColor = $panel; $pOpts.Controls.Add($optBox)
-+$quick = Check 'Quick start: straight to the versus menu (off: start at the title screen for story mode and the rest of the game)' 12 8 640 $optBox 42
++$pOpts = Row 276
++$optBox = New-Object System.Windows.Forms.Panel; $optBox.Location = New-Object System.Drawing.Point(24, 0); $optBox.Size = New-Object System.Drawing.Size(662, 266); $optBox.BackColor = $panel; $pOpts.Controls.Add($optBox)
++$quick = Check 'Quick start: skip the logos and the opening movie, straight to New Game / Continue (off: the intro plays)' 12 8 640 $optBox 42
 +$boundText = 'Turn the Quest boundary off while playing'
 +$bound = Check $boundText 12 52 640 $optBox 42
 +# the Link passthrough edge fix, on by default (off: what was there before it is put back -- Apply-EdgeFix)
 +$edgeFix = Check 'Link passthrough edge fix: no black shadow behind the fighters (a Meta Horizon Link setting for your Windows user; Link restarts once when it changes)' 12 96 640 $optBox 42
 +$readyTip.SetToolTip($edgeFix, $edgeTipText)
-+$wifi = Button 'Headset status over Wi-Fi (optional)' 12 144 300 32 $false $optBox
-+Label 'Needs developer mode (see Help): the headset details and the boundary option without the cable. Air Link itself needs nothing here -- turn it on in the headset (Quick Settings > Link > Air Link).' 12 180 640 36 9 $false $silver $optBox | Out-Null
++# smooth Link over the cable, on by default (off: what was there before it is put back -- Apply-EdgeFix)
++$rateFix = Check 'Smooth Link over the cable: a steady 100 Mbit/s, so the picture and the buttons do not lag (a Meta Horizon Link setting; off for Air Link on weak Wi-Fi)' 12 140 640 $optBox 42
++$readyTip.SetToolTip($rateFix, $rateTipText)
++$wifi = Button 'Headset status over Wi-Fi (optional)' 12 188 300 32 $false $optBox
++Label 'Needs developer mode (see Help): the headset details and the boundary option without the cable. Air Link itself needs nothing here -- turn it on in the headset (Quick Settings > Link > Air Link).' 12 224 640 36 9 $false $silver $optBox | Out-Null
 +$script:optsOpen = $false
 +$optBtn.Add_Click({
 +    $script:optsOpen = -not $script:optsOpen; $optBtn.Text = $(if ($script:optsOpen) { 'Options  ^' } else { 'Options  v' })
@@ -388,10 +394,11 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +$src.SelectedIndex = $(if ($devMode -and (Opt $c 'roomSource' 'quest') -eq 'scan') { 1 } else { 0 })
 +$bound.Checked = [bool](Opt $c 'boundaryOff' $true); $quick.Checked = [bool](Opt $c 'quickStart' $true)
 +$edgeFix.Checked = [bool](Opt $c 'linkEdgeFix' $true)
++$rateFix.Checked = [bool](Opt $c 'linkRateFix' $true)
 +$script:pendingRestart = $false
 +function Save-Settings {
 +    Set-Cfg @{ mode = @('room', 'screen')[$mode.SelectedIndex]
-+               roomSource = @('quest', 'scan')[$src.SelectedIndex]; boundaryOff = $bound.Checked; quickStart = $quick.Checked; linkEdgeFix = $edgeFix.Checked }
++               roomSource = @('quest', 'scan')[$src.SelectedIndex]; boundaryOff = $bound.Checked; quickStart = $quick.Checked; linkEdgeFix = $edgeFix.Checked; linkRateFix = $rateFix.Checked }
 +    $src.Enabled = $mode.SelectedIndex -eq 0
 +    $roomLine.Text = $(if ($mode.SelectedIndex -eq 0) { "Uses your Quest's Space Setup room." } else { 'No room needed: the whole game on a big floating screen.' })
 +}
@@ -411,15 +418,22 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +# or removed since) and, turned off in Options, puts back what was there before. Its line under the Link line says
 +# where it stands, Start restarts Link once so it is read (Restart-LinkForEdgeFix). Never in a QA snapshot: that one
 +# only shows the window.
-+$script:edgeError = ''
++$script:edgeError = ''; $script:rateError = ''
 +function Apply-EdgeFix {
 +    if ($env:DBAR_SNAPSHOT -or -not $script:edgeHelpers -or -not (Installed)) { return }
 +    try {
 +        if ($edgeFix.Checked) { [void](Enable-AetherLinkEdgeFix) } else { [void](Disable-AetherLinkEdgeFix) }
 +        $script:edgeError = ''
 +    } catch { $script:edgeError = "$($_.Exception.Message)" }
++    if (-not $script:rateHelpers) { return }
++    # [linkrate] smooth Link over the cable (1.0.16): the same way, its own note (ar\shortcuts.ps1 has the why)
++    try {
++        if ($rateFix.Checked) { [void](Enable-AetherLinkRateFix) } else { [void](Disable-AetherLinkRateFix) }
++        $script:rateError = ''
++    } catch { $script:rateError = "$($_.Exception.Message)" }
 +}
 +function Edge-State { if (-not $script:edgeHelpers) { return $null }; try { return Get-AetherLinkEdge } catch { return $null } }
++function Rate-State { if (-not $script:rateHelpers) { return $null }; try { return Get-AetherLinkRate } catch { return $null } }
 +function Update-EdgeLine {
 +    $e = Edge-State
 +    if (-not $script:edgeHelpers) { $t = 'Link passthrough edge fix: cannot be checked (ar\shortcuts.ps1 is missing -- press Repair...)'; $col = $salmon }
@@ -433,19 +447,41 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +    elseif ($e.RestartDue) { $t = 'Link passthrough edge fix: on -- Link restarts once when you press Start'; $col = $orange }
 +    elseif ($e.Stale) { $t = 'Link passthrough edge fix: on -- it takes effect after the next PC restart (Link could not be restarted)'; $col = $orange }
 +    else { $t = 'Link passthrough edge fix: on (no black shadow behind the fighters)'; $col = $green }
++    # [linkrate] the second line: smooth Link over the cable (1.0.16); the label takes the more urgent colour of the two
++    $r = Rate-State
++    if (-not $script:rateHelpers) { $t2 = 'Smooth Link over the cable: cannot be checked (ar\shortcuts.ps1 is out of date -- press Repair...)'; $col2 = $salmon }
++    elseif (-not $r) { $t2 = 'Smooth Link over the cable: cannot be checked right now'; $col2 = $salmon }
++    elseif (-not $rateFix.Checked) {
++        $t2 = $(if ($r.On) { "Smooth Link over the cable: off in Options (this PC has Link's 100 Mbit/s on by its own)" } else { 'Smooth Link over the cable: off (Options) -- over the cable the picture and the buttons can lag' })
++        $col2 = $silver
++    }
++    elseif ($script:rateError) { $t2 = "Smooth Link over the cable: could not be turned on ($($script:rateError)) -- press Report a problem"; $col2 = $salmon }
++    elseif (-not $r.On) { $t2 = 'Smooth Link over the cable: not on yet -- close this window and open AETHER AR again'; $col2 = $salmon }
++    elseif ($r.RestartDue) { $t2 = 'Smooth Link over the cable: on -- Link restarts once when you press Start'; $col2 = $orange }
++    elseif ($r.Stale) { $t2 = 'Smooth Link over the cable: on -- it takes effect after the next PC restart (Link could not be restarted)'; $col2 = $orange }
++    else { $t2 = 'Smooth Link over the cable: on (a steady 100 Mbit/s, no lag)'; $col2 = $green }
++    $rank = { param($c) if ($c -eq $salmon) { 3 } elseif ($c -eq $orange) { 2 } elseif ($c -eq $silver) { 1 } else { 0 } }
++    if ((& $rank $col2) -gt (& $rank $col)) { $col = $col2 }
++    $t = "$t`n$t2"
 +    if ($lblEdge.Text -ne $t) { $lblEdge.Text = $t }
 +    $lblEdge.ForeColor = $col
 +}
 +$edgeFix.Add_CheckedChanged({ Save-Settings; Apply-EdgeFix; if (Installed) { Update-Ready }; Update-Layout })
++$rateFix.Add_CheckedChanged({ Save-Settings; Apply-EdgeFix; if (Installed) { Update-Ready }; Update-Layout })
 +# Start: Link's server restarted once when it runs since before the setting was written -- said first, in plain words.
 +# $false = do not start now (Link is not back; the box said what to do).
 +$script:linkRestarting = $false
 +function Restart-LinkForEdgeFix {
-+    if (-not $edgeFix.Checked) { return $true }
-+    $e = Edge-State
-+    if (-not $e -or -not $e.RestartDue) { return $true }
-+    Say-Box ("AETHER AR has turned on a Meta Horizon Link setting that removes the black shadow behind the fighters and the aiming ray in the headset.`n`n" +
-+             "Link reads it only when it starts, so the Meta Horizon Link app on this PC restarts once now. It takes a few seconds.`n`n" +
++    # one restart for both Link settings: the edge fix and smooth Link over the cable ([linkrate], 1.0.16)
++    $e = $(if ($edgeFix.Checked) { Edge-State } else { $null })
++    $r = $(if ($rateFix.Checked) { Rate-State } else { $null })
++    $edgeDue = [bool]($e -and $e.RestartDue); $rateDue = [bool]($r -and $r.RestartDue)
++    if (-not $edgeDue -and -not $rateDue) { return $true }
++    $what = @()
++    if ($edgeDue) { $what += 'removes the black shadow behind the fighters and the aiming ray in the headset' }
++    if ($rateDue) { $what += 'keeps Link over the cable at a steady 100 Mbit/s, so the picture and the buttons do not lag' }
++    Say-Box ("AETHER AR has turned on Meta Horizon Link settings that " + ($what -join ', and ') + ".`n`n" +
++             "Link reads them only when it starts, so the Meta Horizon Link app on this PC restarts once now. It takes a few seconds.`n`n" +
 +             "If Link is on in the headset, it drops out for a moment: afterwards turn Link on in the headset again if it asks (Quick Settings > Link).") 'Information' | Out-Null
 +    $script:linkRestarting = $true; $f.UseWaitCursor = $true; Update-Status; $f.Refresh()
 +    $r = $null
@@ -455,7 +491,7 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +    Update-Ready; Update-Status; Update-Layout
 +    if ($r.Back) { return $true }
 +    if (-not $r.Stopped) {   # (it runs, but not as this user: it reads the setting after the PC restarts)
-+        Say-Box "The Meta Horizon Link app on this PC could not be restarted ($($r.Why)).`n`nThe game starts now. The black shadow behind the fighters goes away after the next restart of this PC." | Out-Null
++        Say-Box "The Meta Horizon Link app on this PC could not be restarted ($($r.Why)).`n`nThe game starts now. The new Link settings take effect after the next restart of this PC." | Out-Null
 +        return $true
 +    }
 +    Say-Box "The Meta Horizon Link app on this PC has not started again yet ($($r.Why)).`n`nOpen it (Start menu: Meta Horizon Link), wait until it shows your headset, then press Start again." | Out-Null
@@ -583,8 +619,10 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +    # (the edge fix as Link sees it: the user variable and when Link's server started)
 +    $e = Edge-State
 +    $edgeRaw = $(if ($e) { "Link edge variable (user): $(if ($null -eq $e.Value) { 'not set' } else { "'$($e.Value)'" }); set by AETHER AR: $(if ($e.SetAt) { $e.SetAt.ToString('o') } else { 'no' }); OVRServer_x64 started: $(if ($e.ServerStart) { $e.ServerStart.ToString('o') } elseif ($e.Running) { 'running, time unknown' } else { 'not running' }); restart tried: $($e.Tried)" } else { 'Link edge variable: cannot be read' })
++    $rr = Rate-State   # ([linkrate] smooth Link over the cable, 1.0.16: the same fields)
++    $rateRaw = $(if ($rr) { "Link bitrate variable (user): $(if ($null -eq $rr.Value) { 'not set' } else { "'$($rr.Value)'" }); set by AETHER AR: $(if ($rr.SetAt) { $rr.SetAt.ToString('o') } else { 'no' }); restart tried: $($rr.Tried)" } else { 'Link bitrate variable: cannot be read' })
 +    $lines = @("AETHER AR $version", "Report made $(Get-Date -Format 'yyyy-MM-dd HH:mm')", "Windows: $os", "OpenXR runtime: $(OpenXR-Runtime)",
-+               $lblDisc.Text, $lblLink.Text, $lblEdge.Text, $edgeRaw, $hs.Text, "Status: $($runState.Text)", "Mode: $($mode.Text)", "Quick start: $($quick.Checked)", "Boundary off: $($bound.Checked)", "Edge fix option: $($edgeFix.Checked)")
++               $lblDisc.Text, $lblLink.Text, $lblEdge.Text, $edgeRaw, $rateRaw, $hs.Text, "Status: $($runState.Text)", "Mode: $($mode.Text)", "Quick start: $($quick.Checked)", "Boundary off: $($bound.Checked)", "Edge fix option: $($edgeFix.Checked)", "Smooth Link option: $($rateFix.Checked)")
 +    [IO.File]::WriteAllText((Join-Path $stage 'window.txt'), (($lines -join "`r`n") + "`r`n"))
 +    # [report] the PC around the game (1.0.15: a crash on other graphics cards could not be told apart without them):
 +    # graphics cards + drivers, processor, memory, the crashes Windows recorded for the game, the headset model and Link's
@@ -836,10 +874,10 @@ index 0000000000000000000000000000000000000000..51dbad6489087005b860271b7964c4a9
 +}
 diff --git a/ar/PLAY.txt b/ar/PLAY.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..c188a40d4dcb4a3ea9322e6249a646e83269cbc5
+index 0000000000000000000000000000000000000000..1ad5ad3a52c29102053a0550490c89d756dfe2a8
 --- /dev/null
 +++ b/ar/PLAY.txt
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,165 @@
 +AETHER AR -- how to play
 +========================
 +
@@ -891,8 +929,9 @@ index 0000000000000000000000000000000000000000..c188a40d4dcb4a3ea9322e6249a646e8
 +Mode (in the AETHER AR window):
 +  Room    the fighters in your room (uses your Quest's Space Setup room)
 +  Screen  the whole game on a big floating screen, e.g. for the story mode
-+Options > Quick start: straight to the versus menu. Off: start at the title screen for
-+the story mode and the rest of the game. (Your progress is saved either way.)
++Options > Quick start: no logos and no opening movie, straight to New Game / Continue.
++Off: the intro plays. First start: New Game, then Yes to "create a save file" -- after
++that, Continue loads your progress.
 +A setting changed while the game runs counts at the next start: press Restart.
 +
 +
@@ -1006,10 +1045,10 @@ index 0000000000000000000000000000000000000000..c188a40d4dcb4a3ea9322e6249a646e8
 +   the cable is in; after that it works over Wi-Fi until the headset restarts.
 diff --git a/ar/README.md b/ar/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599c998325b
+index 0000000000000000000000000000000000000000..51429566a82add2827e5f543444d72b43e1677e3
 --- /dev/null
 +++ b/ar/README.md
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,237 @@
 +# AETHER AR
 +
 +**An unofficial mixed-reality mod for *Dragon Ball Z: Budokai Tenkaichi 3* (PS2), for Meta Quest.** The fighters fight
@@ -1019,6 +1058,20 @@ index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599
 +Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilation of the PS2 game, GPL-3.0). This mod
 +adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 +HUD as its own panel.
++
++## Version 1.0.16
++
++- **Smooth Link over the cable.** If you started Link over a USB cable from the headset's Quick Settings, the picture
++  and the buttons could lag up to two seconds behind. In that mode Link sends a fixed 200 Mbit/s, and the Quest
++  cannot unpack frames that big in time, so they pile up. AETHER AR now turns on Link's own setting for a steady
++  100 Mbit/s (only for your Windows user, no admin rights). Link reads it only when it starts, so the first **Start**
++  after the update restarts the Meta Horizon Link app on the PC once. A message tells you first. If Link was on in
++  the headset, turn it on again there. The AETHER AR window shows it as *Smooth Link over the cable*. If you play on
++  Air Link over weak Wi-Fi, you can turn it off in *Options*. Uninstalling puts back what was there before.
++- **Quick start** now stops at *New Game* / *Continue* and leaves the choice to you. Before, it went on into the
++  game by itself.
++- Pressing the trigger to place the arena no longer reaches the game. Before, the same press also counted as L1/R1
++  in the menu or the fight.
 +
 +## Version 1.0.15
 +
@@ -1145,7 +1198,7 @@ index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599
 +- **Room**: the Quest's own room from Space Setup (automatic).
 +- **Turn the Quest boundary off while playing**: needs USB debugging on the Quest (developer mode). Without it the
 +  game still runs.
-+- **Quick start**: no intro, straight to the versus menu. Off: the title menu, story and the rest of the game.
++- **Quick start**: no logos and no opening movie, straight to *New Game* / *Continue*. Off: the intro plays.
 +- **Link passthrough edge fix** (on): no black shadow behind the fighters. A Meta Horizon Link setting for your
 +  Windows user; Link restarts once at the next Start when it changes.
 +
@@ -1153,8 +1206,8 @@ index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599
 +battery) and sets up adb over Wi-Fi for Air Link.
 +
 +The package brings no save: the game starts like on a new memory card, with the characters and stages a new game
-+has. On the very first start it creates its save (`games\bt3\savedata` in the install folder; quick start answers
-+*Yes* for you).
++has. On the very first start choose **New Game** and answer **Yes** when it asks to create a save file on the memory
++card (it is kept in `games\bt3\savedata` in the install folder). After that, **Continue** loads your progress.
 +
 +In the headset: the menus show on a floating game screen (left stick + **A**, **B** = back; the trigger does not
 +select). The fight starts on your desk or table by itself -- look around your room for it. The trigger only **moves**
@@ -1235,11 +1288,11 @@ index 0000000000000000000000000000000000000000..c177f81eeb30dbc43e0a794cde7b5599
 +every change it makes to BT3-Recomp at the version in `mod\BASE`.
 diff --git a/ar/VERSION b/ar/VERSION
 new file mode 100644
-index 0000000000000000000000000000000000000000..a9707166ba785cfc8602a5300ae64206bdbd6999
+index 0000000000000000000000000000000000000000..b668c3b2c1419fcdfd7553ba20d33ad761a7a639
 --- /dev/null
 +++ b/ar/VERSION
 @@ -0,0 +1 @@
-+1.0.15
++1.0.16
 diff --git a/ar/aether-ar.ico b/ar/aether-ar.ico
 new file mode 100644
 index 0000000000000000000000000000000000000000..3f7a821fe104d2ee4a3bfab1e0bbb291d9e9be1a
@@ -1885,10 +1938,10 @@ index 0000000000000000000000000000000000000000..1f16a5b2debed29a74afb29a9044602d
 +[void]$form.ShowDialog()
 diff --git a/ar/install.ps1 b/ar/install.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..abaf1b720d0e5fd334e64afd54ed58b70b7dfb49
+index 0000000000000000000000000000000000000000..f8c88f91ea42f1c86c858883b3c25a98ce690c32
 --- /dev/null
 +++ b/ar/install.ps1
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,337 @@
 +# AETHER AR -- one-click install (Windows). An unofficial mixed-reality mod.
 +#
 +# Bring your own disc: nothing of the game is shipped. This script asks for YOUR copy of
@@ -2160,6 +2213,18 @@ index 0000000000000000000000000000000000000000..abaf1b720d0e5fd334e64afd54ed58b7
 +        if ($wrote) { Say "Link passthrough edge fix: on (REMOTEHEADSET_ALPHAPREPROCCESINGSCHEME=0 for this user; Link reads it at its next start -- the AETHER AR window restarts Link once when you press Start)" }
 +        else { Say "Link passthrough edge fix: already on for this user (REMOTEHEADSET_ALPHAPREPROCCESINGSCHEME=0)" }
 +    } catch { Say "Link passthrough edge fix could not be set ($($_.Exception.Message)) -- the AETHER AR window tries again and shows it" }
++}
++# 5a'. Smooth Link over the cable (1.0.16, ar\shortcuts.ps1 Enable-AetherLinkRateFix): over USB, Link started from the
++#      headset sends a fixed 200 Mbit/s the Quest 3 cannot decode in time, so picture and buttons lag by up to 2 s.
++#      Link's own BitrateMbps = 100 (user environment variable, no admin) keeps it smooth; noted and restarted like the
++#      edge fix. Off in the window's Options (config linkRateFix = false), an update leaves it off.
++if ($cfg.Contains('linkRateFix') -and $cfg['linkRateFix'] -eq $false) { Say "Smooth Link over the cable: off in the AETHER AR window's Options -- left as it is" }
++else {
++    try {
++        $wrote = Enable-AetherLinkRateFix
++        if ($wrote) { Say "Smooth Link over the cable: on (REMOTEHEADSET_BITRATEMBPS=100 for this user; Link reads it at its next start -- the AETHER AR window restarts Link once when you press Start)" }
++        else { Say "Smooth Link over the cable: already on for this user (REMOTEHEADSET_BITRATEMBPS=100)" }
++    } catch { Say "Smooth Link over the cable could not be set ($($_.Exception.Message)) -- the AETHER AR window tries again and shows it" }
 +}
 +
 +# 5b. A short "start here" at the top of the folder: the folder is BT3-Recomp's developer tree, and a player who opens
@@ -3253,10 +3318,10 @@ index 0000000000000000000000000000000000000000..3bbd65c7741c52f0e84725c096880eb0
 +}
 diff --git a/ar/shortcuts.ps1 b/ar/shortcuts.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..5f28365cde254764ec075058abf18cc67c4d1c71
+index 0000000000000000000000000000000000000000..63179569d5889a4c1af92e0d2690484f098e6762
 --- /dev/null
 +++ b/ar/shortcuts.ps1
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,350 @@
 +# AETHER AR -- its place in Windows: the "AETHER AR" shortcuts (desktop + Start menu), the entry in Settings > Apps,
 +# and the Link passthrough edge fix (a user environment variable, see the end of this file). Dot-sourced, it only
 +# defines functions:
@@ -3415,7 +3480,8 @@ index 0000000000000000000000000000000000000000..5f28365cde254764ec075058abf18cc6
 +# from the registry -- tried), and only when its server OVRServer_x64 starts. The developer had set it by hand and the
 +# mod never did: testers had the edge. Now the install and the window set it (per user: no admin), the window restarts
 +# Link's server once so it is read (Restart-AetherLinkServer, with a word first), and the uninstaller puts back exactly
-+# what was there. Only this one variable: Link's streaming ones (REMOTEHEADSET_HEVC / DBR / DBRMAX) are never touched.
++# what was there. Only this one variable here: Link's streaming ones (REMOTEHEADSET_HEVC / DBR / DBRMAX) are never
++# touched; REMOTEHEADSET_BITRATEMBPS has its own section and its own note below (smooth Link over the cable, 1.0.16).
 +# What was there is noted once, in HKCU:\Software\<RegName> (the key the uninstaller reads before it removes it):
 +#   LinkAlphaNoted   1 = noted (the first time AETHER AR turned the fix on)
 +#   LinkAlphaHad     1 = the variable existed then, LinkAlphaPrev = its value (a '0' of the player's own stays for good)
@@ -3516,6 +3582,8 @@ index 0000000000000000000000000000000000000000..5f28365cde254764ec075058abf18cc6
 +function Restart-AetherLinkServer([string]$RegName = 'AETHER-AR', [string]$ProcessName = 'OVRServer_x64', [int]$TimeoutSec = 30, [int]$SettleSec = 5, [scriptblock]$Pump) {
 +    $n = Get-AetherLinkNote $RegName
 +    if ($n -and $n.LinkAlphaSetAt) { try { Set-AetherLinkNote $RegName 'LinkAlphaTried' String "$($n.LinkAlphaSetAt)" } catch { } }
++    $rn = Get-AetherLinkRateNote $RegName   # (smooth Link over the cable: the same one restart reads it)
++    if ($rn -and $rn.LinkRateSetAt) { try { Set-AetherLinkNote $RegName 'LinkRateTried' String "$($rn.LinkRateSetAt)" } catch { } }
 +    $old = @(Get-Process $ProcessName -ErrorAction SilentlyContinue)
 +    if (-not $old.Count) { return [pscustomobject]@{ Back = $true; Stopped = $false; Why = '' } }   # (not running: it reads it when it starts)
 +    $ids = @($old | ForEach-Object { $_.Id })
@@ -3534,12 +3602,82 @@ index 0000000000000000000000000000000000000000..5f28365cde254764ec075058abf18cc6
 +    }
 +    return [pscustomobject]@{ Back = $false; Stopped = $true; Why = "it did not start again within $TimeoutSec seconds" }
 +}
++
++# ---- Smooth Link over the cable (1.0.16)
++# Started from the headset's Quick Settings, Link over USB now runs on its new transport (USB3_DISCO in the service log),
++# and that one cannot use Link's dynamic bitrate ("isDynamicBitrateEnabled: Failed to get dynamic bitrate state"): it
++# sends a fixed 200 Mbit/s at 4096 px. The Quest 3 needs 15-18 ms to decode such a frame -- more than one frame at 72 Hz
++# (13.9 ms) -- so a queue builds: measured 10.11., Link predicted every frame further ahead, 50 ms -> 1.3-2 s, and every
++# button and the HUD panel lagged. Link's own setting RemoteHeadset/BitrateMbps = 100 (the user environment variable
++# below; read when OVRServer_x64 starts, like the edge fix) keeps it at 30-55 ms on both USB transports.
++# RemoteHeadset/MaxBitrateMbps does NOT cap that fixed rate (tried). BitrateMbps also turns the dynamic bitrate off, so a
++# player on Air Link with weak Wi-Fi turns it off in Options. Noted and put back exactly like the edge fix, in its own
++# values of HKCU:\Software\<RegName>: LinkRateNoted / LinkRateHad / LinkRatePrev / LinkRateSetAt / LinkRateTried.
++$script:AetherLinkRateVar = 'REMOTEHEADSET_BITRATEMBPS'
++$script:AetherLinkRateValue = '100'
++$script:AetherLinkRateNoteNames = @('LinkRateNoted', 'LinkRateHad', 'LinkRatePrev', 'LinkRateSetAt', 'LinkRateTried')
++function Get-AetherLinkRateNote([string]$RegName = 'AETHER-AR') {
++    try { $n = Get-ItemProperty -LiteralPath "HKCU:\Software\$RegName" -ErrorAction Stop } catch { return $null }
++    if ("$($n.LinkRateNoted)" -ne '1') { return $null }
++    return $n
++}
++# On: the variable at 100 for this user; what was there noted first (once). $true when it wrote it (Link has to restart),
++# $false when it was 100 already. Throws when it cannot.
++function Enable-AetherLinkRateFix([string]$RegName = 'AETHER-AR') {
++    $name = $script:AetherLinkRateVar; $want = $script:AetherLinkRateValue
++    $cur = Get-AetherUserEnv $name $RegName
++    if (-not (Get-AetherLinkRateNote $RegName)) {   # (noted in full before the variable is touched, "Noted" last)
++        $had = -not [string]::IsNullOrEmpty($cur)
++        if ($had) { Set-AetherLinkNote $RegName 'LinkRatePrev' String "$cur" }
++        else { Remove-ItemProperty -LiteralPath "HKCU:\Software\$RegName" -Name 'LinkRatePrev' -ErrorAction SilentlyContinue }
++        Set-AetherLinkNote $RegName 'LinkRateHad' DWord ([int]$had)
++        Set-AetherLinkNote $RegName 'LinkRateNoted' DWord 1
++    }
++    if ("$cur" -eq $want) { return $false }
++    Set-AetherUserEnv $name $want $RegName
++    if ((Get-AetherUserEnv $name $RegName) -ne $want) { throw "the user setting $name could not be written" }
++    Set-AetherLinkNote $RegName 'LinkRateSetAt' String ([datetime]::UtcNow.ToString('o'))
++    return $true
++}
++# Off (Options), the same as the uninstaller's: back to what the note says was there, only while it still holds
++# AETHER AR's 100 (a 100 of the player's own from before stays, and so does a value set since). The note goes.
++# Returns 'removed', 'restored', 'kept' or '' (nothing was noted).
++function Disable-AetherLinkRateFix([string]$RegName = 'AETHER-AR') {
++    $n = Get-AetherLinkRateNote $RegName
++    if (-not $n) { return '' }
++    $name = $script:AetherLinkRateVar; $want = $script:AetherLinkRateValue
++    $did = 'kept'
++    if ((Get-AetherUserEnv $name $RegName) -eq $want) {
++        if ("$($n.LinkRateHad)" -ne '1') { Set-AetherUserEnv $name $null $RegName; $did = 'removed' }
++        elseif ("$($n.LinkRatePrev)" -ne $want) { Set-AetherUserEnv $name "$($n.LinkRatePrev)" $RegName; $did = 'restored' }
++    }
++    foreach ($v in $script:AetherLinkRateNoteNames) { Remove-ItemProperty -LiteralPath "HKCU:\Software\$RegName" -Name $v -ErrorAction SilentlyContinue }
++    return $did
++}
++# The state, like Get-AetherLinkEdge: On (the variable is 100), Running, Stale (Link's server runs since before AETHER AR
++# wrote it), RestartDue (stale, no restart made for this change yet), and the raw values for a report.
++function Get-AetherLinkRate([string]$RegName = 'AETHER-AR', [string]$ProcessName = 'OVRServer_x64') {
++    $cur = Get-AetherUserEnv $script:AetherLinkRateVar $RegName
++    $n = Get-AetherLinkRateNote $RegName
++    $setAt = $null
++    if ($n -and $n.LinkRateSetAt) {
++        try { $setAt = [datetime]::Parse("$($n.LinkRateSetAt)", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() } catch { }
++    }
++    $tried = [bool]($setAt -and "$($n.LinkRateTried)" -eq "$($n.LinkRateSetAt)")
++    $srv = @(Get-Process $ProcessName -ErrorAction SilentlyContinue)
++    $started = $null
++    foreach ($p in $srv) { try { $t = $p.StartTime.ToUniversalTime(); if (-not $started -or $t -lt $started) { $started = $t } } catch { } }
++    $on = ($cur -eq $script:AetherLinkRateValue)
++    $stale = [bool]($on -and $setAt -and $started -and $started -lt $setAt)
++    return [pscustomobject]@{ Value = $cur; On = $on; Noted = [bool]$n; Running = [bool]$srv.Count; ServerStart = $started
++                              SetAt = $setAt; Stale = $stale; Tried = $tried; RestartDue = ($stale -and -not $tried) }
++}
 diff --git a/ar/start-ar.ps1 b/ar/start-ar.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..9619cca9672381b66bc4767393efb9013062a93a
+index 0000000000000000000000000000000000000000..0d20301ac69defe6300078309ff3abe0534dea3d
 --- /dev/null
 +++ b/ar/start-ar.ps1
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,212 @@
 +# AETHER AR -- start the game in the headset (Meta Quest over Link / Air Link, passthrough).
 +#   start-ar.ps1           the room mode: 20 cm fighters fight in your room, your walls and furniture block them
 +#   start-ar.ps1 -Screen   the screen mode: the whole game on a floating screen (no room), e.g. for the story
@@ -3663,9 +3801,12 @@ index 0000000000000000000000000000000000000000..9619cca9672381b66bc4767393efb901
 +    PS2X_AR_XR = '1'
 +    PS2X_AUDIO_DEVICE = 'Oculus Virtual Audio'   # the game's sound into the headset
 +}
-+if ($quickStart) {   # no intro: 8x boot, START tapped through movie and title (on the first start it answers "create a
-+                     # save file?" with Yes -- the game makes its own save), straight into the duel menu
-+    $vars.PS2X_FORCE_SKIP = '600'; $vars.PS2X_AUTOTITLE = '1'; $vars.PS2X_TURBO = '8'; $vars.PS2X_MENU_JUMP = '38'; $vars.PS2X_MENU_AUTO = '1'
++if ($quickStart) {   # no intro: 8x boot, START (+ CROSS on the movie) tapped through logos, movie and title -- and no
++                     # further: the player picks New Game / Continue and answers the memory card questions (Manuel
++                     # 10.11.: the mod must not go past that list; it used to jump straight into the duel menu)
++    # (no PS2X_FORCE_SKIP: it holds START+CROSS while the movie flag is on, and that flag outlives a skipped movie --
++    # it pushed through the title and the list; AUTOTITLE=2 skips the movie itself and stops at the title)
++    $vars.PS2X_AUTOTITLE = '2'; $vars.PS2X_TURBO = '8'
 +}
 +# the room: the headset's own room (Space Setup, over Link) unless the detailed scan is chosen (a developer option)
 +if ($useScan) { $vars.PS2X_AR_SCAN = $cfg.roomScan; if ($cfg.roomWallScan -and (Test-Path -LiteralPath $cfg.roomWallScan -PathType Leaf)) { $vars.PS2X_AR_WALLSCAN = $cfg.roomWallScan } }
@@ -3751,10 +3892,10 @@ index 0000000000000000000000000000000000000000..9619cca9672381b66bc4767393efb901
 +}
 diff --git a/ar/uninstall.ps1 b/ar/uninstall.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..10db56941f2192b4c59df0a986c6033c29054623
+index 0000000000000000000000000000000000000000..2bf176d4d6811fc7bea44df3807f27af69a7c565
 --- /dev/null
 +++ b/ar/uninstall.ps1
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,298 @@
 +# AETHER AR -- removes AETHER AR from this PC. Settings > Apps > AETHER AR > Uninstall runs it (no console: plain
 +# Windows boxes). ar\install.ps1 registers it there (ar\shortcuts.ps1 Register-AetherApp).
 +#   1. copies itself to the temp folder and runs from there (the folder it is in gets deleted),
@@ -3980,7 +4121,24 @@ index 0000000000000000000000000000000000000000..10db56941f2192b4c59df0a986c6033c
 +    Log $(if ($old) { "Link edge setting: back to '$old'" } else { 'Link edge setting: removed (AETHER AR had added it)' })
 +    return $(if ($old) { 'restored' } else { 'removed' })
 +}
-+$edgeUndone = ''
++# Smooth Link over the cable (1.0.16, ar\shortcuts.ps1 Enable-AetherLinkRateFix): REMOTEHEADSET_BITRATEMBPS, the same
++# way as the edge fix above, from its own note (LinkRateNoted / LinkRateHad / LinkRatePrev); only while it still holds
++# AETHER AR's 100.
++function Undo-LinkRateFix($sp) {
++    if (-not $sp -or "$($sp.LinkRateNoted)" -ne '1') { return '' }
++    $name = 'REMOTEHEADSET_BITRATEMBPS'
++    $ek = $(if ($RegName -ne 'AETHER-AR') { "HKCU:\Software\$RegName-Environment" } else { '' })
++    $cur = $(if ($ek) { try { [string](Get-ItemProperty -LiteralPath $ek -Name $name -ErrorAction Stop).$name } catch { $null } } else { [Environment]::GetEnvironmentVariable($name, 'User') })
++    if ("$cur" -ne '100') { Log "Link bitrate setting: '$cur' is not AETHER AR's -- left as it is"; return '' }
++    $old = $(if ("$($sp.LinkRateHad)" -eq '1') { "$($sp.LinkRatePrev)" } else { '' })
++    if ($old -eq '100') { Log "Link bitrate setting: the player's own '100' from before -- left as it is"; return '' }
++    if ($ek) {
++        if ($old) { New-ItemProperty -LiteralPath $ek -Name $name -PropertyType String -Value $old -Force | Out-Null } else { Remove-ItemProperty -LiteralPath $ek -Name $name -ErrorAction SilentlyContinue }
++    } else { [Environment]::SetEnvironmentVariable($name, $(if ($old) { $old } else { $null }), 'User') }
++    Log $(if ($old) { "Link bitrate setting: back to '$old'" } else { 'Link bitrate setting: removed (AETHER AR had added it)' })
++    return $(if ($old) { 'restored' } else { 'removed' })
++}
++$edgeUndone = ''; $rateUndone = ''
 +$sk = "HKCU:\Software\$RegName"
 +if (Test-Path -LiteralPath $sk) {
 +    $sp = $null; try { $sp = Get-ItemProperty -LiteralPath $sk -ErrorAction Stop } catch { }
@@ -3989,6 +4147,7 @@ index 0000000000000000000000000000000000000000..10db56941f2192b4c59df0a986c6033c
 +        if ($sp) { $tools = @($sp.InstalledTools | Where-Object { $_ }) }
 +        # (before the key goes: the note is in it; a failure here is said at the end, the rest goes on)
 +        try { $edgeUndone = Undo-LinkEdgeFix $sp } catch { $edgeUndone = "failed: $($_.Exception.Message)"; Log "Link edge setting: $edgeUndone" }
++        try { $rateUndone = Undo-LinkRateFix $sp } catch { $rateUndone = "failed: $($_.Exception.Message)"; Log "Link bitrate setting: $rateUndone" }
 +        Log "removing $sk"; Remove-Item -LiteralPath $sk -Recurse -Force -ErrorAction SilentlyContinue
 +    }
 +}
@@ -4017,6 +4176,9 @@ index 0000000000000000000000000000000000000000..10db56941f2192b4c59df0a986c6033c
 +if ($edgeUndone -eq 'removed') { $out += 'The Meta Horizon Link setting AETHER AR had added (the passthrough edge fix) is removed again. Link drops it the next time it starts.' }
 +elseif ($edgeUndone -eq 'restored') { $out += 'The Meta Horizon Link setting AETHER AR had changed (the passthrough edge fix) is back to what it was before. Link uses it the next time it starts.' }
 +elseif ($edgeUndone) { $out += "AETHER AR could not undo its Meta Horizon Link setting (the passthrough edge fix): $($edgeUndone -replace '^failed: ', ''). It does no harm to other programs." }
++if ($rateUndone -eq 'removed') { $out += 'The Meta Horizon Link setting AETHER AR had added (smooth Link over the cable, 100 Mbit/s) is removed again. Link drops it the next time it starts.' }
++elseif ($rateUndone -eq 'restored') { $out += 'The Meta Horizon Link setting AETHER AR had changed (smooth Link over the cable, 100 Mbit/s) is back to what it was before. Link uses it the next time it starts.' }
++elseif ($rateUndone) { $out += "AETHER AR could not undo its Meta Horizon Link setting (smooth Link over the cable): $($rateUndone -replace '^failed: ', ''). It does no harm to other programs." }
 +if ($tools.Count) {
 +    $out += "When it was installed, AETHER AR also put these tools on this PC:`n" + (($tools | ForEach-Object { '  - ' + $(if ($names[$_]) { $names[$_] } else { $_ }) }) -join "`n") +
 +            "`nThey stay, because other programs may use them. If you do not need them, remove them in Settings > Apps."
@@ -7181,10 +7343,10 @@ index 0000000000000000000000000000000000000000..d70a2e7ab83ff98824b17367ebfb973e
 +}
 diff --git a/ps2xRuntime/src/lib/ar_xr.cpp b/ps2xRuntime/src/lib/ar_xr.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..debfc4f0ff0ae21bb2eb7006bbd25a2e4d1c7b0b
+index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922792d3546
 --- /dev/null
 +++ b/ps2xRuntime/src/lib/ar_xr.cpp
-@@ -0,0 +1,2305 @@
+@@ -0,0 +1,2314 @@
 +// [arxr] See ar_xr.h. OpenXR over Meta Quest Link: Vulkan instance/device through the runtime, passthrough behind the
 +// fighters, the Mario scan's anchor located by UUID so game space sits in the real room.
 +#include "ar_xr.h"
@@ -8513,7 +8675,16 @@ index 0000000000000000000000000000000000000000..debfc4f0ff0ae21bb2eb7006bbd25a2e
 +                            set(inFight || ms < 500 || (ms - 500) % 280 < 110, s_dir);
 +                        }
 +                    }
-+                    set(grip[0], 8); set(grip[1], 9); set(selectNow[0], 10); set(selectNow[1], 11);
++                    // [arplace] a trigger pull that sets the fight's spot is ours, not L1 / R1: pulled while aiming at a
++                    // place the ray accepts, it stays away from the game until it is let go (1.0.16: a spot set during
++                    // the boot reached the game as R1 and the quick start hung before the opening movie)
++                    static bool s_trigOurs[2] = { false, false };
++                    for (int h = 0; h < 2; ++h)
++                    {
++                        if (!selectNow[h]) s_trigOurs[h] = false;
++                        else if (!g.selectWas[h] && g.placing && g.hitValid) s_trigOurs[h] = true;
++                    }
++                    set(grip[0], 8); set(grip[1], 9); set(selectNow[0] && !s_trigOurs[0], 10); set(selectNow[1] && !s_trigOurs[1], 11);
 +                    set(btn[3], 12); set(btn[1], 13); set(btn[0], 14); set(btn[2], 15);
 +                    auto axis = [](float v) { return uint8_t(std::clamp(128.0f + v * 127.0f, 0.0f, 255.0f)); };
 +                    std::lock_guard<std::mutex> l(g.padMx);
@@ -9572,7 +9743,7 @@ index 0000000000000000000000000000000000000000..61da05034214df7a43e219379e7ced19
 +void arRoomRequestPortal(const float gameHit[3], const float gameDir[3]);
 +bool arRoomPortalGeom(float out[13]);
 diff --git a/ps2xRuntime/src/lib/game_overrides.cpp b/ps2xRuntime/src/lib/game_overrides.cpp
-index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d930d7efda1 100644
+index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f616919679d65aecf 100644
 --- a/ps2xRuntime/src/lib/game_overrides.cpp
 +++ b/ps2xRuntime/src/lib/game_overrides.cpp
 @@ -14,6 +14,7 @@ extern std::atomic<uint64_t> g_guestThreadCpuNs;
@@ -9616,7 +9787,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
      static bool ps2xInPlayLookup(uint32_t frame, uint32_t player, Ps2xPadSample &out)
      {
          const auto &m = ps2xInPlayMap();
-@@ -689,9 +702,121 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -689,9 +702,153 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
          // config): a joiner is player 2, whose socket would otherwise poll the second-gamepad slot and
          // read nothing while the only controller sits on slot 0.
          const int liveSlot = (ps2NetActive() && static_cast<int>(socket & 3u) + 1 == ps2NetLocalPlayer()) ? 0 : static_cast<int>(socket & 3u);
@@ -9641,7 +9812,39 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
 +        // START+CROSS taps while the movie plays (that skips it), START taps on the title ("Press START") -- and
 +        // nothing once the main menu (or any other state) is up. State-driven, so it holds at any speed (the
 +        // frame-keyed recording fired its presses during the movie under PS2X_TURBO and the game stayed at boot).
-+        static const bool s_autoTitle = [](){ const char *v = std::getenv("PS2X_AUTOTITLE"); return v && v[0] == '1'; }();
++        // PS2X_AUTOTITLE=2 (the release's quick start, 1.0.16): only as far as the New Game / Continue list -- the
++        // player picks there (Manuel 10.11.). Measured 10.11. by RAM watches over whole boots: the movie flag is ON on
++        // the title too (its background is a movie), so it cannot tell movie from title, and START / CROSS on the list
++        // pick its marked entry -- every rule built on the flag or on timing went on into the main menu. What tells:
++        // the title menu's object *(0x2ff160) (built by the START that ends the movie; a boot object sits there before
++        // the movie, so it counts only after it has been 0 once) and its phase word at obj - 0x1b0c: 0 while the title
++        // fades in, 3 when "Press START button" takes input, 2 once the list is open. So: START taps (START alone) while
++        // the movie runs (no object yet) and on phase 3, none while it fades in, and nothing at all from phase 2 on.
++        // Unknown layout (the word never reads 3): no taps -- the player presses START; never past the list.
++        // The movie is skipped only once its stream has run 1 s in real time (g_ps2xStreamStarted ends the turbo): a skip
++        // the moment it began -- in the headset the stream starts ~10 s later than on the desktop, inside the taps -- came
++        // with the runs where the title's music never started (10.11.; not proven to be the cause, the music is open).
++        static const int s_autoTitleMode = [](){ const char *v = std::getenv("PS2X_AUTOTITLE"); return v && (v[0] == '1' || v[0] == '2') ? v[0] - '0' : 0; }();
++        if (s_autoTitleMode == 2 && liveSlot == 0 && g_bt3StateLive.load(std::memory_order_relaxed) == 0x01u)
++        {
++            static bool s_armed = false, s_done = false; static uint64_t s_tapEnd = 0, s_nextTap = 0, s_streamAt = 0;
++            const uint64_t fr = g_bt3FrameCount.load(std::memory_order_relaxed);
++            if (!s_streamAt && g_ps2xStreamStarted.load(std::memory_order_relaxed)) s_streamAt = fr;
++            const bool movieSkippable = s_streamAt && fr >= s_streamAt + 60u;
++            auto word = [&](uint32_t a) { uint32_t v = 0; std::memcpy(&v, rdram + (a & PS2_RAM_MASK), 4); return v; };
++            const uint32_t menu = word(0x2ff160u) & 0x1FFFFFFFu;
++            const bool haveMenu = menu >= 0x102000u && menu < PS2_RAM_SIZE;
++            if (!menu && !s_armed) { s_armed = true; std::fprintf(stderr, "[autotitle] past the boot: START up to New Game / Continue\n"); }
++            if (s_armed && !s_done)
++            {
++                const uint32_t phase = haveMenu ? word(menu - 0x1b0cu) : 0xFFFFFFFFu;
++                if (haveMenu && phase == 2u) { s_done = true; std::fprintf(stderr, "[autotitle] New Game / Continue is up (frame %llu): the player picks\n", (unsigned long long)fr); }
++                else if (fr < s_tapEnd) b0 = static_cast<uint8_t>(b0 & ~0x08u);   // START (held for the tap)
++                else if (((!menu && movieSkippable) || (haveMenu && phase == 3u)) && fr >= s_nextTap)   // the movie, or "Press START button"
++                { s_tapEnd = fr + 6u; s_nextTap = fr + 40u; b0 = static_cast<uint8_t>(b0 & ~0x08u); }
++            }
++        }
++        static const bool s_autoTitle = s_autoTitleMode == 1;
 +        if (s_autoTitle && liveSlot == 0 && g_bt3StateLive.load(std::memory_order_relaxed) == 0x01u)
 +        {
 +            // The memory card questions, read from the title's own object (*(0x2ff160), measured 27.10. by RAM dumps of
@@ -9739,7 +9942,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
          // TEST (env PS2X_AUTOSTART): also tap START+CROSS periodically to auto-advance.
          static const bool s_autostart = [](){ const char *v = std::getenv("PS2X_AUTOSTART"); return v && v[0] && v[0] != '0'; }();
          if (s_autostart)
-@@ -856,10 +981,12 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -856,10 +1013,12 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
              if (ps2xInPlayActive())
              {
                  Ps2xPadSample sm{};
@@ -9754,7 +9957,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
                  b0 = static_cast<uint8_t>(recB & 0xFFu);
                  b1 = static_cast<uint8_t>((recB >> 8) & 0xFFu);
              }
-@@ -874,6 +1001,181 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -874,6 +1033,181 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
          p[5] = ly; // left stick Y
      }
  
@@ -9936,7 +10139,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
      void bt3PadConnect(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) // FUN_00295160
      {
          (void)rdram; (void)runtime;
-@@ -4847,7 +5149,7 @@ namespace
+@@ -4847,7 +5181,7 @@ namespace
          // backstop for any other cyclic path.
          {
              const uint32_t base = getRegU32(ctx, 4);
@@ -9945,7 +10148,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
              {
                  static std::atomic<uint32_t> s_sk{0};
                  if (s_sk.fetch_add(1) < 8)
-@@ -5765,6 +6067,19 @@ namespace
+@@ -5765,6 +6099,19 @@ namespace
                  const char *path = c ? c + 1 : "ramdump.bin";
                  if (FILE *f = std::fopen(path, "wb")) { std::fwrite(rdram, 1, 32u * 1024u * 1024u, f); if (const uint8_t *spr = ps2GetScratchpadHostPtr()) std::fwrite(spr, 1, 16384, f); std::fclose(f); std::fprintf(stderr, "[ramdump] frame %llu -> %s (+16 KB scratchpad)\n", (unsigned long long)g_bt3FrameCount.load(), path); }
              }
@@ -9965,7 +10168,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
          }
          if (s_addrs.empty() || !rdram) return;
          static std::vector<uint32_t> s_prev(s_addrs.size(), 0xdeadbeefu);
-@@ -5926,6 +6241,35 @@ namespace
+@@ -5926,6 +6273,35 @@ namespace
          return true;
      }
  
@@ -10001,7 +10204,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
      // [menujump] PS2X_MENU_JUMP=<state>: hold the host combo (keyboard P+L, or both mouse buttons held)
      // to "detonate" a screen transition by code instead of navigating. One-shot per press.
      // The env value is the target top-level state, decimal (4 = main menu, 38 = versus/duel,
-@@ -6801,6 +7145,8 @@ namespace
+@@ -6801,6 +7177,8 @@ namespace
          bt3DumpKey(rdram);           // [dumpkey]
          if (bt3StateLogOn()) bt3StateLogFrame(rdram);   // [statelog] one line per screen change
          bt3NetJumpCharSelect(rdram, ctx, runtime); // [netjump]
@@ -10010,7 +10213,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
          bt3MenuJumpFrame(rdram, ctx, runtime);     // [menujump] PS2X_MENU_JUMP + P+L / LMB+RMB combo
          ps2x_dueldump::tick(rdram, runtime);   // [dueldump] PS2X_DUELDUMP=1
          ps2x_dueldump::tickSettings(rdram);    // [duelsettings] PS2X_DUELSETTINGS=1
-@@ -6819,6 +7165,8 @@ namespace
+@@ -6819,6 +7197,8 @@ namespace
          ps2xNotifyPollDropBox(ps2xDropBoxDir(), rdram);
          ps2DetHashFrame(rdram, ctx->vu0_r);   // [dethash]
          if (g_ps2StepCensus.load(std::memory_order_relaxed)) ps2StepCensusFrame(ctx);   // [stepcensus]
@@ -10019,7 +10222,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
          ps2HalfStepFrame(ctx);        // [halfstep] (no-op unless configured; raises the macro switch on fight frames only)
          {   // [findclock] PS2X_FINDCLOCK=<start value>: when the fight gate opens, remember every 32-bit slot holding a value
              // within 12 of the start value (int, or float), and 300 render frames (5 s at 60) later print the ones that
-@@ -7707,9 +8055,11 @@ namespace
+@@ -7707,9 +8087,11 @@ namespace
          if (const char *sc = std::getenv("PS2X_STEPCENSUS"); sc && sc[0]) ps2StepCensusEnable(sc);   // [stepcensus]
          if (const char *aw = std::getenv("PS2X_ADDRWATCH"); aw && aw[0]) ps2AddrWatchEnable(aw);   // [addrwatch]
          if (const char *st = std::getenv("PS2X_STORETRACE"); st && st[0]) ps2StoreTraceEnable(st);   // [storetrace]
@@ -10031,7 +10234,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..6cd18c8432346bec7424d21e39174d93
              g_orig102060 = runtime.lookupFunction(0x00102060u);
              if (g_orig102060) runtime.replaceFunction(0x00102060u, &bt3VStep);
              g_orig115950 = runtime.lookupFunction(0x00115950u);
-@@ -8134,6 +8484,16 @@ namespace
+@@ -8134,6 +8516,16 @@ namespace
          // mcRoot below in configureIoPathsFromElf) or the launcher's saves
          // would never be found.
          ps2_stubs::padConfigInit(runtime.getIoPaths().elfDirectory.parent_path().string());

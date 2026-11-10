@@ -8,6 +8,20 @@ Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilati
 adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 HUD as its own panel.
 
+## Version 1.0.16
+
+- **Smooth Link over the cable.** If you started Link over a USB cable from the headset's Quick Settings, the picture
+  and the buttons could lag up to two seconds behind. In that mode Link sends a fixed 200 Mbit/s, and the Quest
+  cannot unpack frames that big in time, so they pile up. AETHER AR now turns on Link's own setting for a steady
+  100 Mbit/s (only for your Windows user, no admin rights). Link reads it only when it starts, so the first **Start**
+  after the update restarts the Meta Horizon Link app on the PC once. A message tells you first. If Link was on in
+  the headset, turn it on again there. The AETHER AR window shows it as *Smooth Link over the cable*. If you play on
+  Air Link over weak Wi-Fi, you can turn it off in *Options*. Uninstalling puts back what was there before.
+- **Quick start** now stops at *New Game* / *Continue* and leaves the choice to you. Before, it went on into the
+  game by itself.
+- Pressing the trigger to place the arena no longer reaches the game. Before, the same press also counted as L1/R1
+  in the menu or the fight.
+
 ## Version 1.0.15
 
 - Fixes the crash right after **Start** ("The game stopped unexpectedly (code -1073741819)") that hit many graphics
@@ -133,7 +147,7 @@ or Air Link). The game appears in the headset by itself; it waits up to 5 minute
 - **Room**: the Quest's own room from Space Setup (automatic).
 - **Turn the Quest boundary off while playing**: needs USB debugging on the Quest (developer mode). Without it the
   game still runs.
-- **Quick start**: no intro, straight to the versus menu. Off: the title menu, story and the rest of the game.
+- **Quick start**: no logos and no opening movie, straight to *New Game* / *Continue*. Off: the intro plays.
 - **Link passthrough edge fix** (on): no black shadow behind the fighters. A Meta Horizon Link setting for your
   Windows user; Link restarts once at the next Start when it changes.
 
@@ -141,8 +155,8 @@ Then press **Start**. *Restart* applies changed settings. The window also shows 
 battery) and sets up adb over Wi-Fi for Air Link.
 
 The package brings no save: the game starts like on a new memory card, with the characters and stages a new game
-has. On the very first start it creates its save (`games\bt3\savedata` in the install folder; quick start answers
-*Yes* for you).
+has. On the very first start choose **New Game** and answer **Yes** when it asks to create a save file on the memory
+card (it is kept in `games\bt3\savedata` in the install folder). After that, **Continue** loads your progress.
 
 In the headset: the menus show on a floating game screen (left stick + **A**, **B** = back; the trigger does not
 select). The fight starts on your desk or table by itself -- look around your room for it. The trigger only **moves**
