@@ -8,6 +8,29 @@ Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilati
 adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 HUD as its own panel.
 
+## Version 1.0.17
+
+- **No more freezes in the story.** Two bugs could stop it:
+  - Now and then the start read the game's table of contents incompletely. Then the music was missing, and later the
+    story could hang where it loads a sound, for example right after an attack or at the end of a fight. AETHER AR had
+    asked the disc drive about a read that was still being set up and taken the answer for "done". It now waits until
+    the read has really started.
+  - Losing the same story fight twice in a row froze the second *FAILED* screen. It now goes on as normal.
+- **The music** plays in AR again.
+- **Ultimate attacks are easy to do:** hold the left grip, push the **right** stick down and press **Y** (for Goku the
+  Spirit Bomb, in *Max Power*). On the Quest controller the left stick and Y are under the same thumb, so the original
+  L2 + down + triangle could hardly be pressed. While the left grip is held, the right stick now gives the direction
+  too; the left stick still works as before.
+- **Screen mode:** in a fight the left stick now works like on the original pad. Before, it acted like the menus' D-pad
+  that pulses after half a second: the fighter moved in jerks, and L2 + down + triangle mostly came out as Blast 2
+  (Goku's Kamehameha instead of the Spirit Bomb).
+- **Room mode:** the direction of an L2 command is no longer turned with your view. Seen from the side of the arena,
+  "down" reached the game as left or right.
+- A short gap in a fight (the game draws no fighters for a moment) no longer switches to the floating game screen.
+- **Stop** ends the game cleanly: it closes the headset session first. Before, a hanging exit could leave a game
+  process that could not be ended any more and held Link until the PC was restarted. The AETHER AR window no longer
+  shows *Running* for such a process.
+
 ## Version 1.0.16
 
 - **Smooth Link over the cable.** If you started Link over a USB cable from the headset's Quick Settings, the picture
@@ -174,6 +197,7 @@ the AETHER AR window.
 | Y (left controller) | Triangle | Triangle action in a fight |
 | Left / right trigger | L1 / R1 | Normal BT3 inputs; when the placement ray is shown, pull either trigger to place the fight |
 | Left / right grip | L2 / R2 | Normal BT3 inputs |
+| Left grip + right stick + Y / B | L2 + direction + Triangle / Circle | Blast commands without reaching over: while the left grip is held, the right stick also gives the direction (Ultimate: left grip + right stick down + Y) |
 | Left / right stick click | L3 / R3 | Normal BT3 inputs; click both together to choose the fight's spot again |
 | Menu button (left) | START | Pause; hold 3 seconds without grips to update Space Setup |
 | Both grips + Menu | L2 + R2 + START | Switch between Room and Screen mode |

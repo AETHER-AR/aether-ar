@@ -31,10 +31,10 @@ index 0000000000000000000000000000000000000000..9939fa580dce5e971fa64e5a87d58c83
 +start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0ar\AetherAR.ps1"
 diff --git a/ar/AetherAR.ps1 b/ar/AetherAR.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..45489ca11b882431b8fad52dc7c80c8d2cbba5f9
+index 0000000000000000000000000000000000000000..a3ca79786d60b9791196efae591220e5a0645b30
 --- /dev/null
 +++ b/ar/AetherAR.ps1
-@@ -0,0 +1,837 @@
+@@ -0,0 +1,841 @@
 +# AETHER AR -- the launcher window. Once installed it is a player window: the disc and the PC's Link app checked (and
 +# Link's passthrough edge fix: no black shadow behind the fighters), the mode, Start / Restart / Stop, what the game is
 +# doing, how to play (Options, Help, Report a problem below). Not installed yet (a fresh clone): 1 the ISO, 2 Install,
@@ -169,7 +169,9 @@ index 0000000000000000000000000000000000000000..45489ca11b882431b8fad52dc7c80c8d
 +# the headsets adb sees ("device", not "unauthorized" / "offline")
 +function Adb-Devices([switch]$Force) { @(((Adb @('devices') -Force:$Force) -split "`n") | Where-Object { $_ -match "`tdevice$" } | ForEach-Object { ($_ -split "`t")[0] }) }
 +function Installed { return (Test-Path $exe) -and (Test-Path (Join-Path $root 'games\bt3\work\SLUS_216.78')) -and (Read-Cfg) }
-+function Game-Procs { Get-Process ps2EntryRunner -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } }
++# (not a game process that cannot end any more: one thread left, stuck in the system after a lost headset session. It
++# read "Running" and blocked Start until the PC was restarted -- 15.11.; a new game starts fine beside it)
++function Game-Procs { Get-Process ps2EntryRunner -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe -and $(try { $_.Threads.Count -gt 1 } catch { $true }) } }
 +# the start script of THIS install (it waits for the headset before the game appears: a second Start then started a
 +# second game -- release audit 31.10.)
 +function Start-Procs { @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine.Contains("$ar\start-ar.ps1") }) }
@@ -514,8 +516,10 @@ index 0000000000000000000000000000000000000000..45489ca11b882431b8fad52dc7c80c8d
 +    try {
 +        foreach ($p in (Start-Procs)) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }   # (the waiting start script too)
 +        foreach ($p in @(Game-Procs)) { try { $p.CloseMainWindow() | Out-Null } catch {} }
-+        # up to 4 s for the game to close, with the window alive (a plain Start-Sleep 4 froze it: "Not responding")
-+        for ($i = 0; $i -lt 8 -and @(Game-Procs).Count; $i++) { Start-Sleep -Milliseconds 500; [System.Windows.Forms.Application]::DoEvents() }
++        # up to 12 s for the game to close, with the window alive (a plain Start-Sleep 4 froze it: "Not responding"). It
++        # closes the headset session first (at most 3 s GPU wait + 6 s session); killed before that, with the session
++        # still open, the game process could not be ended any more and kept ~1 GB and Link's session (15.11.)
++        for ($i = 0; $i -lt 24 -and @(Game-Procs).Count; $i++) { Start-Sleep -Milliseconds 500; [System.Windows.Forms.Application]::DoEvents() }
 +        foreach ($p in @(Game-Procs)) { try { Stop-Process -Id $p.Id -Force } catch {} }
 +        # the boundary back on: the start script killed above never runs its own reset. On every headset adb sees -- with
 +        # USB and Wi-Fi at once a plain "adb shell" fails with "more than one device" (release audit 31.10.)
@@ -874,10 +878,10 @@ index 0000000000000000000000000000000000000000..45489ca11b882431b8fad52dc7c80c8d
 +}
 diff --git a/ar/PLAY.txt b/ar/PLAY.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ad5ad3a52c29102053a0550490c89d756dfe2a8
+index 0000000000000000000000000000000000000000..07cb8ece3ee9161c0d66712e4576d40f6f1d570f
 --- /dev/null
 +++ b/ar/PLAY.txt
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,168 @@
 +AETHER AR -- how to play
 +========================
 +
@@ -965,6 +969,9 @@ index 0000000000000000000000000000000000000000..1ad5ad3a52c29102053a0550490c89d7
 +  Left / right trigger               L1 / R1         Normal BT3 inputs; pull either to place the fight
 +                                                    while the placement ray is visible
 +  Left / right grip                  L2 / R2         Normal BT3 inputs
++  Left grip + right stick + Y / B    L2 + direction  Blast commands: with the left grip held, the
++                                     + Tri / Circle  right stick also gives the direction
++                                                    (Ultimate: left grip + right stick down + Y)
 +  Left / right stick click           L3 / R3         Normal BT3 inputs; click both to choose the spot again
 +  Menu button (left controller)      START           Pause; hold 3 s without grips to update Space Setup
 +  Both grips + Menu                  L2 + R2 + START Switch between Room and Screen mode
@@ -1045,10 +1052,10 @@ index 0000000000000000000000000000000000000000..1ad5ad3a52c29102053a0550490c89d7
 +   the cable is in; after that it works over Wi-Fi until the headset restarts.
 diff --git a/ar/README.md b/ar/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..51429566a82add2827e5f543444d72b43e1677e3
+index 0000000000000000000000000000000000000000..fd12a282711fc65a827ccc97c0527769cf819c7c
 --- /dev/null
 +++ b/ar/README.md
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,261 @@
 +# AETHER AR
 +
 +**An unofficial mixed-reality mod for *Dragon Ball Z: Budokai Tenkaichi 3* (PS2), for Meta Quest.** The fighters fight
@@ -1058,6 +1065,29 @@ index 0000000000000000000000000000000000000000..51429566a82add2827e5f543444d72b4
 +Built on [BT3-Recomp](https://github.com/z3xox/BT3-Recomp) (a static recompilation of the PS2 game, GPL-3.0). This mod
 +adds the headset output (OpenXR over Link / Air Link with passthrough) and the room: collision, placement, the
 +HUD as its own panel.
++
++## Version 1.0.17
++
++- **No more freezes in the story.** Two bugs could stop it:
++  - Now and then the start read the game's table of contents incompletely. Then the music was missing, and later the
++    story could hang where it loads a sound, for example right after an attack or at the end of a fight. AETHER AR had
++    asked the disc drive about a read that was still being set up and taken the answer for "done". It now waits until
++    the read has really started.
++  - Losing the same story fight twice in a row froze the second *FAILED* screen. It now goes on as normal.
++- **The music** plays in AR again.
++- **Ultimate attacks are easy to do:** hold the left grip, push the **right** stick down and press **Y** (for Goku the
++  Spirit Bomb, in *Max Power*). On the Quest controller the left stick and Y are under the same thumb, so the original
++  L2 + down + triangle could hardly be pressed. While the left grip is held, the right stick now gives the direction
++  too; the left stick still works as before.
++- **Screen mode:** in a fight the left stick now works like on the original pad. Before, it acted like the menus' D-pad
++  that pulses after half a second: the fighter moved in jerks, and L2 + down + triangle mostly came out as Blast 2
++  (Goku's Kamehameha instead of the Spirit Bomb).
++- **Room mode:** the direction of an L2 command is no longer turned with your view. Seen from the side of the arena,
++  "down" reached the game as left or right.
++- A short gap in a fight (the game draws no fighters for a moment) no longer switches to the floating game screen.
++- **Stop** ends the game cleanly: it closes the headset session first. Before, a hanging exit could leave a game
++  process that could not be ended any more and held Link until the PC was restarted. The AETHER AR window no longer
++  shows *Running* for such a process.
 +
 +## Version 1.0.16
 +
@@ -1225,6 +1255,7 @@ index 0000000000000000000000000000000000000000..51429566a82add2827e5f543444d72b4
 +| Y (left controller) | Triangle | Triangle action in a fight |
 +| Left / right trigger | L1 / R1 | Normal BT3 inputs; when the placement ray is shown, pull either trigger to place the fight |
 +| Left / right grip | L2 / R2 | Normal BT3 inputs |
++| Left grip + right stick + Y / B | L2 + direction + Triangle / Circle | Blast commands without reaching over: while the left grip is held, the right stick also gives the direction (Ultimate: left grip + right stick down + Y) |
 +| Left / right stick click | L3 / R3 | Normal BT3 inputs; click both together to choose the fight's spot again |
 +| Menu button (left) | START | Pause; hold 3 seconds without grips to update Space Setup |
 +| Both grips + Menu | L2 + R2 + START | Switch between Room and Screen mode |
@@ -1288,11 +1319,11 @@ index 0000000000000000000000000000000000000000..51429566a82add2827e5f543444d72b4
 +every change it makes to BT3-Recomp at the version in `mod\BASE`.
 diff --git a/ar/VERSION b/ar/VERSION
 new file mode 100644
-index 0000000000000000000000000000000000000000..b668c3b2c1419fcdfd7553ba20d33ad761a7a639
+index 0000000000000000000000000000000000000000..8fc77d0fab646b37d04c1f8a97c379d17c48e91a
 --- /dev/null
 +++ b/ar/VERSION
 @@ -0,0 +1 @@
-+1.0.16
++1.0.17
 diff --git a/ar/aether-ar.ico b/ar/aether-ar.ico
 new file mode 100644
 index 0000000000000000000000000000000000000000..3f7a821fe104d2ee4a3bfab1e0bbb291d9e9be1a
@@ -1606,7 +1637,7 @@ index 0000000000000000000000000000000000000000..2ddf5373ec48e6b953df3a5a26293c16
 +}
 diff --git a/ar/controls-page.ps1 b/ar/controls-page.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f16a5b2debed29a74afb29a9044602ddaf2ad49
+index 0000000000000000000000000000000000000000..b52922b32fa722aebb2403d50134589c4f0e2395
 --- /dev/null
 +++ b/ar/controls-page.ps1
 @@ -0,0 +1,326 @@
@@ -1837,7 +1868,7 @@ index 0000000000000000000000000000000000000000..1f16a5b2debed29a74afb29a9044602d
 +Add-Label $special 'Triggers' 654 12 200 20 9 $true $white | Out-Null
 +Add-Label $special 'Place only while the pointer ray is visible; not for menu selection.' 654 38 280 42 8.5 $false $muted | Out-Null
 +
-+Add-Label $form 'Combat actions can vary by character and situation.' 24 632 610 24 9 $false $muted | Out-Null
++Add-Label $form 'Combat actions vary by character. Ultimate: left grip + right stick down + Y.' 24 632 610 24 9 $false $muted | Out-Null
 +$recording = New-Object System.Windows.Forms.Button
 +$recording.Text = 'Quest recordings'
 +$recording.Location = New-Object System.Drawing.Point(662, 626)
@@ -3674,10 +3705,10 @@ index 0000000000000000000000000000000000000000..63179569d5889a4c1af92e0d2690484f
 +}
 diff --git a/ar/start-ar.ps1 b/ar/start-ar.ps1
 new file mode 100644
-index 0000000000000000000000000000000000000000..0d20301ac69defe6300078309ff3abe0534dea3d
+index 0000000000000000000000000000000000000000..7c5f29e7f8da2537f31e6dc4f82f41cd9164b288
 --- /dev/null
 +++ b/ar/start-ar.ps1
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,217 @@
 +# AETHER AR -- start the game in the headset (Meta Quest over Link / Air Link, passthrough).
 +#   start-ar.ps1           the room mode: 20 cm fighters fight in your room, your walls and furniture block them
 +#   start-ar.ps1 -Screen   the screen mode: the whole game on a floating screen (no room), e.g. for the story
@@ -3880,7 +3911,12 @@ index 0000000000000000000000000000000000000000..0d20301ac69defe6300078309ff3abe0
 +            Tell "To change the room: in the headset open Settings > Physical space > Space setup and update this room. Then press Start in the AETHER AR window -- the game reads it anew."
 +            exit 0
 +        }
-+        if (Test-Path $flag) { Status "The headset session was lost -- starting the game again ($run)."; Start-Sleep 3; continue }
++        if (Test-Path $flag) {
++            # (the game may say why: ar-restart.flag holds one line -- e.g. its music did not load, 1.0.17; empty = the headset session)
++            $why = ''; try { $why = ([IO.File]::ReadAllText($flag)).Trim() } catch { }
++            if (-not $why) { $why = 'The headset session was lost -- starting the game again.' }
++            Status "$why ($run)"; Start-Sleep 3; continue
++        }
 +        if ($code -eq 0) { Status 'The game has ended. Press Start to play again.'; exit 0 }
 +        Tell "The game stopped unexpectedly (code $code). Press Start to play again. If it happens again, press Report a problem in the AETHER AR window and email the ZIP it saves on your desktop to contact@aether-xr.com." 'Warning'
 +        exit 0
@@ -4426,6 +4462,78 @@ index 61741b0a2cd48b7b7ab46d6d47c463cbc84e3960..2be7816c1bab779b28bb68d6cdbd6c01
              ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,       dbz(0.08f, 0.10f, 0.12f));
              ImGui::PushStyleColor(ImGuiCol_TableRowBg,          dbz(0.05f, 0.07f, 0.09f, 0.50f));
              ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt,       dbz(1.00f, 0.62f, 0.10f, 0.04f));
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
+index d6f75bd329dba95dd638f1b3d01af0e7520b4982..a17212701fb20746d3a031c661e752ec9f0ca9d3 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
+@@ -3,6 +3,7 @@
+ #include "ps2_compat.h"
+ #include <atomic>
+ #include <mutex>
++#include <chrono>
+ #include <cstdio>
+ #include "Common.h"
+ #include "CD.h"
+@@ -10,6 +11,24 @@
+ 
+ std::atomic<uint64_t> g_cdLoadReads{0}, g_cdLoadBytes{0};
+ std::atomic<uint64_t> g_cdReadSerial{0};   // [cdedge3] every sceCdRead ever issued (never reset): "a read happened after X" for the CD state guard
++// [afstoc] the CRI partition loader reads an AFS archive's table of contents one sector per request at boot (BT3: into
++// 0x2c7180 -- a 1-entry table at lbn 0x7be, PZS3US1.AFS 14 sectors, then PZS3US2.AFS 255; the music is in the last).
++// A stream opened from an archive whose table is not complete gets its position from a half-summed size table: the
++// title music started 63 sectors too early and no music came for the whole run (12.11., AR quick start). Counted here
++// so the quick start waits for it (game_overrides.cpp [autotitle]) and a table that stops being read is noticed
++// ([afstoc] watchdog there: in AR boots where the Link session was rebuilt meanwhile, PZS3US2 stopped at 254 of 255).
++std::atomic<int> g_ps2xAfsTocsLoaded{0};
++std::atomic<bool> g_ps2xAfsTocBusy{false};
++static std::atomic<int64_t> g_ps2xAfsTocLastNs{0};   // when the table being read got its last sector (steady clock)
++static int64_t afsTocNowNs() { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
++// seconds since the table being read got its last sector; 0 when none is being read
++extern "C" double ps2xAfsTocStallSec()
++{
++    if (!g_ps2xAfsTocBusy.load(std::memory_order_relaxed)) return 0.0;
++    return double(afsTocNowNs() - g_ps2xAfsTocLastNs.load(std::memory_order_relaxed)) / 1e9;
++}
++extern std::atomic<uint64_t> g_bt3FrameCount;   // game_overrides.cpp
++extern std::atomic<int> g_ps2xVblankTurbo;      // Interrupt.cpp
+ namespace
+ {   // [cdedge3] the last 32 reads (destination, serial): "was THIS buffer read after serial S?" for the CD state guard
+     struct CdReadRec { uint32_t dst = 0; uint64_t serial = 0; };
+@@ -226,6 +245,34 @@ namespace ps2_stubs
+                                  selected.lbn, selected.sectors, d0, d1, getRegU32(ctx, 31));
+             }
+         }
++        if (ok && selected.sectors == 1u && (selected.buf & PS2_RAM_MASK) == 0x2c7180u)
++        {   // [afstoc] a single-sector read that starts with "AFS\0" opens a table; the next sectors of the same table
++            // follow one by one; the table is complete at ceil((8 + 8 * entries) / 2048) sectors. Only the partition
++            // loader's staging buffer (0x2c7180): an AFS header read anywhere else is not a table being loaded.
++            static uint32_t s_tocBase = 0, s_tocNeed = 0, s_tocGot = 0;
++            const uint32_t off = selected.buf & PS2_RAM_MASK;
++            if (off + 8u <= PS2_RAM_SIZE && std::memcmp(rdram + off, "AFS\0", 4) == 0)
++            {
++                uint32_t entries = 0; std::memcpy(&entries, rdram + off + 4u, 4);
++                s_tocBase = selected.lbn; s_tocGot = 1u; s_tocNeed = static_cast<uint32_t>((8ull + 8ull * entries + 2047ull) / 2048ull);
++                g_ps2xAfsTocLastNs.store(afsTocNowNs(), std::memory_order_relaxed);
++                g_ps2xAfsTocBusy.store(s_tocNeed > 1u, std::memory_order_relaxed);
++                std::fprintf(stderr, "[afstoc] table at lbn 0x%x: %u entries, %u sectors (frame %llu, turbo %d)\n", selected.lbn, entries, s_tocNeed, (unsigned long long)g_bt3FrameCount.load(std::memory_order_relaxed), g_ps2xVblankTurbo.load(std::memory_order_relaxed));
++            }
++            else if (s_tocNeed && selected.lbn == s_tocBase + s_tocGot)
++            {
++                g_ps2xAfsTocLastNs.store(afsTocNowNs(), std::memory_order_relaxed);
++                if ((++s_tocGot & 63u) == 0u)
++                    std::fprintf(stderr, "[afstoc]   %u / %u sectors (frame %llu, turbo %d)\n", s_tocGot, s_tocNeed, (unsigned long long)g_bt3FrameCount.load(std::memory_order_relaxed), g_ps2xVblankTurbo.load(std::memory_order_relaxed));
++            }
++            if (s_tocNeed && s_tocGot >= s_tocNeed)
++            {
++                const int n = g_ps2xAfsTocsLoaded.fetch_add(1, std::memory_order_relaxed) + 1;
++                g_ps2xAfsTocBusy.store(false, std::memory_order_relaxed);
++                std::fprintf(stderr, "[afstoc] table at lbn 0x%x complete (%u sectors, %d table(s) loaded, frame %llu)\n", s_tocBase, s_tocGot, n, (unsigned long long)g_bt3FrameCount.load(std::memory_order_relaxed));
++                s_tocNeed = 0;
++            }
++        }
+         {   // [cdreadlog] every read that landed: destination range + which argument layout, so a late/misplaced read
+             // can be matched against a corrupted object (loader wild-jump hunt). First 6000 only.
+             static std::atomic<uint32_t> s_cl{0};
 diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
 index 92f603ed184e23dc91e051656c5775d2c45de756..501a3617defd0661d0b52d6c943018c69f00cd5f 100644
 --- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
@@ -7343,10 +7451,10 @@ index 0000000000000000000000000000000000000000..d70a2e7ab83ff98824b17367ebfb973e
 +}
 diff --git a/ps2xRuntime/src/lib/ar_xr.cpp b/ps2xRuntime/src/lib/ar_xr.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922792d3546
+index 0000000000000000000000000000000000000000..69418e8c5a4d0dc1477ac629a2c9d8edc3cf83c7
 --- /dev/null
 +++ b/ps2xRuntime/src/lib/ar_xr.cpp
-@@ -0,0 +1,2314 @@
+@@ -0,0 +1,2341 @@
 +// [arxr] See ar_xr.h. OpenXR over Meta Quest Link: Vulkan instance/device through the runtime, passthrough behind the
 +// fighters, the Mario scan's anchor located by UUID so game space sits in the real room.
 +#include "ar_xr.h"
@@ -7498,6 +7606,7 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +            XrSwapchain menuSc = XR_NULL_HANDLE; uint32_t menuW = 0, menuH = 0, menuCur = 0; int64_t scFormat = 0; VkFormat scView = VK_FORMAT_UNDEFINED;
 +            std::vector<Vulkan::ImageHandle> menuImg; std::vector<Vulkan::ImageViewHandle> menuViews;
 +            bool menuReleased = false, menuHasImage = false; XrPosef menuPose{}; XrTime menuLastShown = 0; bool menuHud = false; uint32_t menuRectW = 0, menuRectH = 0;
++            bool fighterGap = false;   // [arblink] setFighterGap: the HUD panel is kept through the gap
 +        } g;
 +
 +        // runs f on its own thread and waits for it at most 'sec' seconds: OpenXR calls that close things never returned
@@ -8606,8 +8715,18 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +                        // (which sits behind the player's fighter): the stick vector is turned by the angle between the
 +                        // game camera's forward and the head's forward in game space, both horizontal. The camera's
 +                        // forward sign is settled with the fighters (the camera looks from player 1 towards player 2).
++                        // [arblast] NOT while the left grip (L2) is held: L2 + a direction is a command -- Blast 1, Blast 2,
++                        // the Ultimate (L2 + down + triangle) -- that the game reads off the stick as on the pad, never a
++                        // move. Turned by the head, "down" seen from the side of the arena reached the game as left or
++                        // right, and L2 + triangle alone is Blast 2 (Goku: the Kamehameha instead of the Spirit Bomb).
++                        // ... and while the left grip is held, the RIGHT stick gives that direction too (when the left one
++                        // rests): on a Quest controller the left stick and Y are under the same thumb, so L2 + down + triangle
++                        // could not be pressed with one hand -- now it is left grip + right stick down + Y. The right stick
++                        // itself still reaches the game unchanged.
++                        if (grip[0] && stick[0][0] * stick[0][0] + stick[0][1] * stick[0][1] < 0.09f && stick[1][0] * stick[1][0] + stick[1][1] * stick[1][1] >= 0.25f)
++                        { stick[0][0] = stick[1][0]; stick[0][1] = stick[1][1]; }
 +                        float fc[3], rc[3], p1[3], p2[3];
-+                        if (arFightActive() && arcamScreenAxes(fc, rc) && arRoomFighterPos(0, p1) && arRoomFighterPos(1, p2) && (stick[0][0] != 0.0f || stick[0][1] != 0.0f))
++                        if (arFightActive() && !grip[0] && arcamScreenAxes(fc, rc) && arRoomFighterPos(0, p1) && arRoomFighterPos(1, p2) && (stick[0][0] != 0.0f || stick[0][1] != 0.0f))
 +                        {
 +                            const float dx = p2[0] - p1[0], dz = p2[2] - p1[2];
 +                            if (fc[0] * dx + fc[2] * dz < 0.0f) { fc[0] = -fc[0]; fc[2] = -fc[2]; }
@@ -8652,7 +8771,13 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +                    uint16_t pressed = 0;
 +                    auto set = [&](bool on, int bit) { if (on) pressed |= uint16_t(1u << bit); };
 +                    set(replaceNow[0], 1); set(replaceNow[1], 2); set(btn[4], 3);
-+                    const bool inFight = arFightActive();
++                    // [arpadfight] a fight runs -- in EVERY mode. arFightActive() is the room's question (the fighters in the
++                    // room) and says no on the screen, and the pad asked it: in screen mode a fight got the menus' stick, a
++                    // D-pad that pulses after half a second (110 of every 280 ms) and no analog axes. The fighter moved in
++                    // jerks, and L2 + down + triangle mostly arrived without its "down" -- Blast 2 instead of the Ultimate
++                    // (Manuel, 14.11., screen mode: "only the Kamehameha"). The result word ([arover]) tells a fight
++                    // in every mode; the room additionally needs its two fighters.
++                    const bool inFight = arRoomFightLive() && (arScreenMode() || arRoomFighterCount() >= 2u);
 +                    {   // [armenu] The left stick drives menus as discrete D-pad input. Keep one direction until the
 +                        // stick returns through its dead band, so diagonal hand movement cannot alternate menu axes.
 +                        static int s_dir = -1; static std::chrono::steady_clock::time_point s_since{};
@@ -8909,11 +9034,17 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +    void shutdown()
 +    {
 +        if (!g.inst) return;
-+        std::fprintf(stderr, "[arxr] shutting the headset session down\n");
++        std::fprintf(stderr, "[arxr] shutting the headset session down\n"); std::fflush(stderr);
 +        g.ok = false;
-+        if (g.dev) g.dev->wait_idle();
-+        if (g.session) { if (g.running) xrEndSession(g.session); xrDestroySession(g.session); g.session = XR_NULL_HANDLE; }
-+        xrDestroyInstance(g.inst); g.inst = XR_NULL_HANDLE;
++        // [arexit] The GPU wait on a thread with a time limit, then the session closed the way closeForExit() closes it:
++        // the window closed (Stop in the AETHER AR window) can end run() inside a frame, a command buffer open, and
++        // Granite's wait_idle then waits on itself forever (21.10.). The game hung right here, Stop killed it after 4 s with
++        // the session still open, and that left an unkillable process holding ~1 GB and the headset's Link session (15.11.,
++        // after every headset test).
++        if (g.dev) { if (!within(3, []() { g.dev->wait_idle(); })) std::fprintf(stderr, "[arxr] the GPU did not go idle in 3 s -- the session is closed all the same\n"); }
++        closeForExit();
++        g.session = XR_NULL_HANDLE; g.inst = XR_NULL_HANDLE;
++        std::fprintf(stderr, "[arxr] headset session closed\n"); std::fflush(stderr);
 +    }
 +
 +    // [arfail] No silent fallback (the owner's rule; release audit 31.10.: without the headset or the room the game ran
@@ -9585,12 +9716,16 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +        g.dev->external_queue_unlock();
 +    }
 +    // [arhud] the HUD panel was shown within the last quarter second (ps2_seamvk.cpp: a single fight frame without the
-+    // fighters does not switch to the game screen -- it blinked, and the panel was placed anew)
++    // fighters does not switch to the game screen -- it blinked, and the panel was placed anew). [arblink] In a fighter
++    // gap (the game draws no fighters, the game screen waits 2 s before it comes) the panel stays up to 2.1 s: it went
++    // after a quarter second and came back with the fighters -- the HUD blinked with every gap.
 +    bool hudShownRecently()
 +    {
++        const auto keep = std::chrono::milliseconds(g.fighterGap ? 2100 : 250);
 +        return g.menuHud && g.hudReleasedAt != std::chrono::steady_clock::time_point{} &&
-+               std::chrono::steady_clock::now() - g.hudReleasedAt < std::chrono::milliseconds(250);
++               std::chrono::steady_clock::now() - g.hudReleasedAt < keep;
 +    }
++    void setFighterGap(bool gap) { g.fighterGap = gap; }
 +
 +    void endFrame()
 +    {
@@ -9663,10 +9798,10 @@ index 0000000000000000000000000000000000000000..4f161b910bccf5a92473bb0e41827922
 +#endif
 diff --git a/ps2xRuntime/src/lib/ar_xr.h b/ps2xRuntime/src/lib/ar_xr.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..61da05034214df7a43e219379e7ced19815224ce
+index 0000000000000000000000000000000000000000..013b4ed6da8b9534c3afcd34826816289605dd1f
 --- /dev/null
 +++ b/ps2xRuntime/src/lib/ar_xr.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +// [arxr] The AR headset output: OpenXR over Meta Quest Link, Vulkan through Granite, passthrough behind the fighters.
 +//
 +// Off unless PS2X_AR_XR=1. Then the native renderer's Vulkan instance and device are created by the OpenXR runtime
@@ -9708,7 +9843,8 @@ index 0000000000000000000000000000000000000000..61da05034214df7a43e219379e7ced19
 +    // render the composed frame into the returned view, submit, then releaseMenu() before endFrame
 +    Vulkan::ImageView *acquireMenu(uint32_t w, uint32_t h, bool hud);   // hud: the fight's HUD panel (alpha-blended, higher, smaller)
 +    void releaseMenu();
-+    bool hudShownRecently();                         // [arhud] the fight's HUD panel was shown within the last 0.25 s
++    bool hudShownRecently();                         // [arhud] the fight's HUD panel was shown within the last 0.25 s (2.1 s in a fighter gap)
++    void setFighterGap(bool gap);                    // [arblink] this frame: a fight runs, the game drew no fighters, the room stays
 +    // [arplace] Choosing the spawn point: at start (and after a thumbstick click) a controller ray picks a spot on the
 +    // scanned room; the trigger puts the arena centre there. placementGeometry fills a game-space triangle soup (ray +
 +    // ring) and its premultiplied colour for this frame; 0 = nothing to draw (placement done).
@@ -9743,18 +9879,22 @@ index 0000000000000000000000000000000000000000..61da05034214df7a43e219379e7ced19
 +void arRoomRequestPortal(const float gameHit[3], const float gameDir[3]);
 +bool arRoomPortalGeom(float out[13]);
 diff --git a/ps2xRuntime/src/lib/game_overrides.cpp b/ps2xRuntime/src/lib/game_overrides.cpp
-index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f616919679d65aecf 100644
+index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..d744c5f341804f2665513be517255c84c62a9a45 100644
 --- a/ps2xRuntime/src/lib/game_overrides.cpp
 +++ b/ps2xRuntime/src/lib/game_overrides.cpp
-@@ -14,6 +14,7 @@ extern std::atomic<uint64_t> g_guestThreadCpuNs;
+@@ -14,6 +14,11 @@ extern std::atomic<uint64_t> g_guestThreadCpuNs;
  
  // [skipforce] FMV-active latch (defined in ps2_gs_gpu.cpp); gates the forced skip button.
  extern std::atomic<uint32_t> g_ps2FmvActive;
 +extern std::atomic<bool> g_ps2xStreamStarted;   // ps2_audio.cpp: the first music PCM or movie demux ([turbo])
++extern std::atomic<int> g_ps2xAfsTocsLoaded;    // Kernel/Stubs/CD.cpp [afstoc]: AFS tables of contents read completely
++extern std::atomic<bool> g_ps2xAfsTocBusy;
++extern "C" double ps2xAfsTocStallSec();          // Kernel/Stubs/CD.cpp [afstoc]: seconds the table being read has had no sector
++extern "C" const char *ps2xExeDirC();             // main.cpp
  extern std::atomic<uint32_t> g_ps2ForceSkipFrames;   // [skipforce] countdown poked by the FMV override
  
  // [framegate] vsync tick source, declared at file scope for the same reason as the above.
-@@ -24,6 +25,11 @@ bool ps2HalfStepFightActive();
+@@ -24,6 +29,11 @@ bool ps2HalfStepFightActive();
  void ps2HalfStepNoteLogic(uint64_t frame);
  void ps2AddrWatchEnable(const char *hex);
  void ps2StoreTraceEnable(const char *spec);
@@ -9766,7 +9906,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
  extern std::atomic<uint64_t> g_workerFrameNs;   // [framegate] kick worker busy ns, last frame
  extern std::atomic<uint64_t> g_cdLoadReads, g_cdLoadBytes;
  extern std::atomic<uint64_t> g_cdReadSerial;   // [cdedge3] CD.cpp
-@@ -133,6 +139,12 @@ extern const uint32_t g_ps2OverlayFunctionTableSlotCount;
+@@ -133,6 +143,12 @@ extern const uint32_t g_ps2OverlayFunctionTableSlotCount;
  namespace ps2_stubs
  {
      uint16_t ps2xLivePadButtons(int player, uint8_t &lx, uint8_t &ly, uint8_t &rx, uint8_t &ry);
@@ -9779,7 +9919,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
      uint32_t ps2RandCallCount();   // [dethash]
      uint64_t ps2RandState();      // [dethash]
      void     ps2RandRestore(uint64_t state, uint32_t calls);   // [savestate]
-@@ -482,6 +494,7 @@ namespace
+@@ -482,6 +498,7 @@ namespace
          return m;
      }
      static bool ps2xInPlayActive() { static const bool on = !ps2xInPlayMap().empty(); return on; }
@@ -9787,7 +9927,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
      static bool ps2xInPlayLookup(uint32_t frame, uint32_t player, Ps2xPadSample &out)
      {
          const auto &m = ps2xInPlayMap();
-@@ -689,9 +702,153 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -689,9 +706,159 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
          // config): a joiner is player 2, whose socket would otherwise poll the second-gamepad slot and
          // read nothing while the only controller sits on slot 0.
          const int liveSlot = (ps2NetActive() && static_cast<int>(socket & 3u) + 1 == ps2NetLocalPlayer()) ? 0 : static_cast<int>(socket & 3u);
@@ -9830,7 +9970,13 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
 +            static bool s_armed = false, s_done = false; static uint64_t s_tapEnd = 0, s_nextTap = 0, s_streamAt = 0;
 +            const uint64_t fr = g_bt3FrameCount.load(std::memory_order_relaxed);
 +            if (!s_streamAt && g_ps2xStreamStarted.load(std::memory_order_relaxed)) s_streamAt = fr;
-+            const bool movieSkippable = s_streamAt && fr >= s_streamAt + 60u;
++            // ... and only once all three AFS tables of contents are read ([afstoc]: a 1-entry one at lbn 0x7be, PZS3US1,
++            // then PZS3US2): the title opens its music from PZS3US2 the moment the movie is skipped, and with the table
++            // still being read it got the wrong position -- 63 sectors early, no music for the whole run (12.11., AR quick
++            // start). On the console the logos take long enough; here the quick start does not.
++            // (Never reached on another disc layout: the movie then plays and the player presses START, no dead end.)
++            const bool tocsReady = g_ps2xAfsTocsLoaded.load(std::memory_order_relaxed) >= 3 && !g_ps2xAfsTocBusy.load(std::memory_order_relaxed);
++            const bool movieSkippable = s_streamAt && fr >= s_streamAt + 60u && tocsReady;
 +            auto word = [&](uint32_t a) { uint32_t v = 0; std::memcpy(&v, rdram + (a & PS2_RAM_MASK), 4); return v; };
 +            const uint32_t menu = word(0x2ff160u) & 0x1FFFFFFFu;
 +            const bool haveMenu = menu >= 0x102000u && menu < PS2_RAM_SIZE;
@@ -9942,7 +10088,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
          // TEST (env PS2X_AUTOSTART): also tap START+CROSS periodically to auto-advance.
          static const bool s_autostart = [](){ const char *v = std::getenv("PS2X_AUTOSTART"); return v && v[0] && v[0] != '0'; }();
          if (s_autostart)
-@@ -856,10 +1013,12 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -856,10 +1023,12 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
              if (ps2xInPlayActive())
              {
                  Ps2xPadSample sm{};
@@ -9957,7 +10103,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
                  b0 = static_cast<uint8_t>(recB & 0xFFu);
                  b1 = static_cast<uint8_t>((recB >> 8) & 0xFFu);
              }
-@@ -874,6 +1033,181 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+@@ -874,6 +1043,181 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
          p[5] = ly; // left stick Y
      }
  
@@ -10139,7 +10285,89 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
      void bt3PadConnect(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime) // FUN_00295160
      {
          (void)rdram; (void)runtime;
-@@ -4847,7 +5181,7 @@ namespace
+@@ -1690,7 +2034,11 @@ extern "C" int ps2xNetServeSwapRead(unsigned long long slotId, unsigned long lon
+             {
+                 const bool audible = ps2xFrameStepOn() ? (sndListBytes(rdram, sink, kSinkList1) != 0u)   // [rollback] guest queue, not device
+                                                        : (runtime->audioBackend().streamProgress(it->second.streamId).pending > 0u);
+-                if (audible)
++                // ... except the music pair (streams 0 + 1): a START there is a new track, and the console drops the old
++                // one's tail. Skipping it on one side only (its tail still pending, the other side's drained) left the
++                // pair half reset -- the right ring flushed, the left still full of the movie -- and the title music
++                // never started (12.11., 1 of 5 AR boots).
++                if (audible && it->second.streamId > 1u)
+                     return; // still audible: this is a retrigger, not a fresh stream
+             }
+         }
+@@ -3607,7 +3955,8 @@ namespace
+     struct Bt3DevDone { std::atomic<uint32_t> dev{0u}; std::atomic<uint32_t> reported{1u};
+                         std::atomic<uint32_t> stream{0u}; std::atomic<uint32_t> idleWait{0u};
+                         std::atomic<uint32_t> activeReq{0u};   // [cdedge2] pending request ([stream+8]) the device was seen busy/done for
+-                        std::atomic<uint32_t> pendSeen{0u}; std::atomic<uint64_t> pendSerial{0u}; std::atomic<uint32_t> busyPolls{0u}; };   // [cdedge3] the pending request last registered, the read serial when it appeared, polls answered BUSY for it
++                        std::atomic<uint32_t> pendSeen{0u}; std::atomic<uint64_t> pendSerial{0u}; std::atomic<uint32_t> busyPolls{0u};   // [cdedge3] the pending request last registered, the read serial when it appeared, polls answered BUSY for it
++                        std::atomic<uint32_t> startPending{0u}; std::atomic<int64_t> startNs{0}; };   // [cdstart] a read start entered, its arm not yet done
+     static Bt3DevDone s_bt3DevSlots[8];
+     Bt3DevDone *bt3DevSlotAt(int i) { return &s_bt3DevSlots[(i < 0 || i >= 8) ? 0 : i]; }   // [statesync]
+     inline Bt3DevDone *bt3DevSlot(uint32_t dev)
+@@ -3628,6 +3977,40 @@ namespace
+         return nullptr;
+     }
+ 
++    // [cdstart] The CRI read start (sub_26ABB0) marks its stream "reading" (state 2) and only a few calls later arms the
++    // device (func_270EC8: device state 2). On the PS2 nothing runs in between: the start holds the CRI server lock and
++    // its raised priority. Here the dispatch pump can run the CD server tick on the same thread in that gap, and the
++    // ADXF server step then polls a stream that is reading from a device that has not been armed yet. The edge guard
++    // answered BUSY for at most 240 polls (the release build without the request identity at once) and then "done": the
++    // loader took the previous sector's bytes for the next one, the AFS table of contents landed one slot off from there
++    // and its last sector was never read -- no music, and the story's FAILED screen waited forever (15.11.: every stalled
++    // boot had exactly one read start with the same sectors-read count as the one before it, a healthy boot none; the
++    // event trace showed the arm coming only after the false "done"). Now a device whose read start is still being set
++    // up answers BUSY until it is armed (5 s at most, said in the log).
++    static PS2Runtime::RecompiledFunction g_origAdxfReadStart = nullptr, g_origDevArm = nullptr;
++    static int64_t bt3NowNs() { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
++    static void bt3AdxfReadStart(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
++    {
++        uint32_t dev = 0u; std::memcpy(&dev, rdram + ((getRegU32(ctx, 4) + 4u) & PS2_RAM_MASK), 4);
++        if (dev) if (Bt3DevDone *ds = bt3DevSlot(dev)) { ds->startNs.store(bt3NowNs(), std::memory_order_relaxed); ds->startPending.store(1u, std::memory_order_release); }
++        g_origAdxfReadStart(rdram, ctx, runtime);
++    }
++    static void bt3DevArm(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
++    {
++        const uint32_t dev = getRegU32(ctx, 4);
++        g_origDevArm(rdram, ctx, runtime);
++        if (Bt3DevDone *ds = bt3DevSlot(dev)) ds->startPending.store(0u, std::memory_order_release);
++    }
++    static bool bt3DevStarting(Bt3DevDone *ds)
++    {
++        if (!ds || ds->startPending.load(std::memory_order_acquire) == 0u) return false;
++        if (bt3NowNs() - ds->startNs.load(std::memory_order_relaxed) < 5000000000LL) return true;
++        static std::atomic<int> s_said{0};
++        if (s_said.fetch_add(1) < 4) std::fprintf(stderr, "[cdstart] a read start was not armed within 5 s -- the old guard decides again\n");
++        ds->startPending.store(0u, std::memory_order_relaxed);
++        return false;
++    }
++
+     // [statesync] The slots are host-side latches that decide which device read-state the game sees
+     // (bt3CdStateEdge, the tick pump): they must travel with a snapshot, or a peer that adopts our RAM
+     // mid-read continues on its own latches and its loader takes a different branch ~30 frames later.
+@@ -3712,7 +4095,16 @@ namespace
+                         std::fprintf(stderr, "%s\n", line);
+                     }
+                 }
+-                if (waiting && s_edgeFix && s_edge3 && !started && ds->busyPolls.fetch_add(1u) < 240u)
++                const bool starting = waiting && s_edgeFix && bt3DevStarting(ds);   // [cdstart]
++                if (starting)
++                {
++                    state = 2u;
++                    static std::atomic<uint32_t> s_bs{0};
++                    const uint32_t k = s_bs.fetch_add(1u);
++                    if (k < 4u || (k % 1000u) == 0u)
++                        std::fprintf(stderr, "[cdstart] #%u dev=0x%x polled while its read start is still being set up (stream 0x%x); BUSY until it is armed\n", k, handle, stream);
++                }
++                else if (waiting && s_edgeFix && s_edge3 && !started && ds->busyPolls.fetch_add(1u) < 240u)
+                 {
+                     state = 2u;
+                     static std::atomic<uint32_t> s_b3{0};
+@@ -4847,7 +5239,7 @@ namespace
          // backstop for any other cyclic path.
          {
              const uint32_t base = getRegU32(ctx, 4);
@@ -10148,7 +10376,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
              {
                  static std::atomic<uint32_t> s_sk{0};
                  if (s_sk.fetch_add(1) < 8)
-@@ -5765,6 +6099,19 @@ namespace
+@@ -5765,6 +6157,19 @@ namespace
                  const char *path = c ? c + 1 : "ramdump.bin";
                  if (FILE *f = std::fopen(path, "wb")) { std::fwrite(rdram, 1, 32u * 1024u * 1024u, f); if (const uint8_t *spr = ps2GetScratchpadHostPtr()) std::fwrite(spr, 1, 16384, f); std::fclose(f); std::fprintf(stderr, "[ramdump] frame %llu -> %s (+16 KB scratchpad)\n", (unsigned long long)g_bt3FrameCount.load(), path); }
              }
@@ -10168,10 +10396,35 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
          }
          if (s_addrs.empty() || !rdram) return;
          static std::vector<uint32_t> s_prev(s_addrs.size(), 0xdeadbeefu);
-@@ -5926,6 +6273,35 @@ namespace
+@@ -5926,6 +6331,67 @@ namespace
          return true;
      }
  
++    // [afstoc] watchdog: an AFS table of contents that stops being read part-way (PZS3US2 at 254 of 255 sectors, 12.11.,
++    // AR boots where the Link session was rebuilt while it was read) leaves the music entries unread -- no music for the
++    // whole run, and the story waited on its music. Nothing resumes it, so the game restarts itself after 20 s without a
++    // sector, the way a lost headset session does (ar-restart.flag: ar\start-ar.ps1 starts it again and shows the
++    // reason). Only when that script is there to start it again (AETHER_AR_LAUNCHER); elsewhere it is only said.
++    static void bt3AfsTocWatchdog()
++    {
++        static bool s_fired = false, s_menuSeen = false;
++        if (s_fired || s_menuSeen) return;
++        if (g_bt3StateLive.load(std::memory_order_relaxed) == 0x04u) { s_menuSeen = true; return; }   // (the boot's tables: never once the game is under way)
++        const double stall = ps2xAfsTocStallSec();
++        if (stall < 20.0) return;
++        s_fired = true;
++        const char *launcher = std::getenv("AETHER_AR_LAUNCHER");
++        std::fprintf(stderr, "[afstoc] the table of contents being read has had no sector for %.0f s -- %s\n", stall, launcher && launcher[0] ? "restarting the game" : "no music in this run (no launcher to restart it)");
++        std::fflush(stderr);
++        if (!(launcher && launcher[0])) return;
++        if (const char *xd = ps2xExeDirC())
++        {
++            const std::string flag = std::string(xd) + "/ar-restart.flag";
++            if (FILE *fp = std::fopen(flag.c_str(), "w")) { std::fputs("The game's music did not load -- starting the game again.", fp); std::fclose(fp); }
++        }
++        std::_Exit(42);
++    }
++
 +    // [turbo] PS2X_TURBO=<n>: the boot (logos, opening movie, title) runs at n x real time -- the vblank worker
 +    // delivers n ticks per period (Interrupt.cpp) -- until the main menu (0x04) is up, then real time. A
 +    // recorded boot input (PS2X_INPLAY) is keyed on game frames, so it drives the title the same way.
@@ -10194,26 +10447,34 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
 +            s_done = true; g_ps2xVblankTurbo.store(1, std::memory_order_relaxed);
 +            std::fprintf(stderr, "[turbo] off at frame %llu (state 0x%02x%s): real time from here\n", (unsigned long long)fr, st, stream ? ", the first stream" : "");
 +        }
-+        else if (g_ps2xVblankTurbo.load(std::memory_order_relaxed) != s_factor)
-+        {
-+            g_ps2xVblankTurbo.store(s_factor, std::memory_order_relaxed);
-+            std::fprintf(stderr, "[turbo] %dx through the boot (until the main menu)\n", s_factor);
++        else
++        {   // [afstoc] real time while an AFS table of contents is being read: with the turbo on it, PZS3US2's table
++            // stopped part-way in 5 of 13 AR boots (12.11.; with this, 0 of 13) -- the music entries stayed unread, and
++            // the watchdog below has to restart the game. It is read in the first seconds; the turbo resumes after.
++            const int want = g_ps2xAfsTocBusy.load(std::memory_order_relaxed) ? 1 : s_factor;
++            if (g_ps2xVblankTurbo.load(std::memory_order_relaxed) != want)
++            {
++                g_ps2xVblankTurbo.store(want, std::memory_order_relaxed);
++                if (want > 1) std::fprintf(stderr, "[turbo] %dx through the boot (until the main menu)\n", want);
++                else std::fprintf(stderr, "[turbo] real time while an AFS table of contents is read\n");
++            }
 +        }
 +    }
 +
      // [menujump] PS2X_MENU_JUMP=<state>: hold the host combo (keyboard P+L, or both mouse buttons held)
      // to "detonate" a screen transition by code instead of navigating. One-shot per press.
      // The env value is the target top-level state, decimal (4 = main menu, 38 = versus/duel,
-@@ -6801,6 +7177,8 @@ namespace
+@@ -6801,6 +7267,9 @@ namespace
          bt3DumpKey(rdram);           // [dumpkey]
          if (bt3StateLogOn()) bt3StateLogFrame(rdram);   // [statelog] one line per screen change
          bt3NetJumpCharSelect(rdram, ctx, runtime); // [netjump]
 +        bt3TurboFrame();                           // [turbo] PS2X_TURBO=<n>: fast boot until the main menu
++        bt3AfsTocWatchdog();                       // [afstoc] a table of contents that stopped being read: restart
 +        bt3CrashProbeFrame(rdram);                 // [arcrash] PS2X_AR_CRASHPROBE=1
          bt3MenuJumpFrame(rdram, ctx, runtime);     // [menujump] PS2X_MENU_JUMP + P+L / LMB+RMB combo
          ps2x_dueldump::tick(rdram, runtime);   // [dueldump] PS2X_DUELDUMP=1
          ps2x_dueldump::tickSettings(rdram);    // [duelsettings] PS2X_DUELSETTINGS=1
-@@ -6819,6 +7197,8 @@ namespace
+@@ -6819,6 +7288,8 @@ namespace
          ps2xNotifyPollDropBox(ps2xDropBoxDir(), rdram);
          ps2DetHashFrame(rdram, ctx->vu0_r);   // [dethash]
          if (g_ps2StepCensus.load(std::memory_order_relaxed)) ps2StepCensusFrame(ctx);   // [stepcensus]
@@ -10222,7 +10483,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
          ps2HalfStepFrame(ctx);        // [halfstep] (no-op unless configured; raises the macro switch on fight frames only)
          {   // [findclock] PS2X_FINDCLOCK=<start value>: when the fight gate opens, remember every 32-bit slot holding a value
              // within 12 of the start value (int, or float), and 300 render frames (5 s at 60) later print the ones that
-@@ -7707,9 +8087,11 @@ namespace
+@@ -7707,9 +8178,11 @@ namespace
          if (const char *sc = std::getenv("PS2X_STEPCENSUS"); sc && sc[0]) ps2StepCensusEnable(sc);   // [stepcensus]
          if (const char *aw = std::getenv("PS2X_ADDRWATCH"); aw && aw[0]) ps2AddrWatchEnable(aw);   // [addrwatch]
          if (const char *st = std::getenv("PS2X_STORETRACE"); st && st[0]) ps2StoreTraceEnable(st);   // [storetrace]
@@ -10234,7 +10495,7 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
              g_orig102060 = runtime.lookupFunction(0x00102060u);
              if (g_orig102060) runtime.replaceFunction(0x00102060u, &bt3VStep);
              g_orig115950 = runtime.lookupFunction(0x00115950u);
-@@ -8134,6 +8516,16 @@ namespace
+@@ -8134,6 +8607,16 @@ namespace
          // mcRoot below in configureIoPathsFromElf) or the launcher's saves
          // would never be found.
          ps2_stubs::padConfigInit(runtime.getIoPaths().elfDirectory.parent_path().string());
@@ -10251,8 +10512,23 @@ index 57ca9f32608d3a5ee46f9cf35194c0e591d66902..9aa56386e71de73f44013f7f61691967
          runtime.replaceFunction(0x00295160u, &bt3PadConnect);
          runtime.replaceFunction(0x00296160u, &bt3PadStatus);
          runtime.replaceFunction(0x00296090u, &bt3PadRead);
+@@ -8217,6 +8700,14 @@ namespace
+     // rather than to the hook's timing.
+     void applyBt3CdStateEdge(PS2Runtime &runtime)
+     {
++        // [cdstart] the read start and the arm, so the guard knows a device that is still being set up
++        g_origAdxfReadStart = runtime.lookupFunction(0x0026abb0u);
++        g_origDevArm = runtime.lookupFunction(0x00270ec8u);
++        if (g_origAdxfReadStart && g_origDevArm)
++        {
++            const bool a = runtime.replaceFunction(0x0026abb0u, &bt3AdxfReadStart), b = runtime.replaceFunction(0x00270ec8u, &bt3DevArm);
++            std::fprintf(stderr, "[cdstart] read start %d, arm %d: a device still being set up answers BUSY\n", (int)a, (int)b);
++        }
+         g_orig270dd0 = runtime.lookupFunction(0x00270dd0u);
+         if (g_orig270dd0 && runtime.replaceFunction(0x00270dd0u, &bt3CdStateEdge))
+             std::cerr << "[game_overrides] BT3: CD read-state completion edge guard on func_270DD0"
 diff --git a/ps2xRuntime/src/lib/ps2_audio.cpp b/ps2xRuntime/src/lib/ps2_audio.cpp
-index 7783e084730a42d52812ac38c69c349bb40c3ede..c7fdb78bdd5629156f8b42a4c12f86225b6c04ac 100644
+index 7783e084730a42d52812ac38c69c349bb40c3ede..8f11a34107262c2712754a101d3ffabf402202ac 100644
 --- a/ps2xRuntime/src/lib/ps2_audio.cpp
 +++ b/ps2xRuntime/src/lib/ps2_audio.cpp
 @@ -305,11 +305,24 @@ void PS2AudioBackend::onStreamPcmMix(uint32_t streamId, const int16_t *samples,
@@ -10280,6 +10556,39 @@ index 7783e084730a42d52812ac38c69c349bb40c3ede..c7fdb78bdd5629156f8b42a4c12f8622
  
      std::lock_guard<std::mutex> lock(m_streamMutex);
      StreamState &st = m_streams[streamId];
+@@ -762,6 +775,14 @@ void PS2AudioBackend::serviceStreams()
+     static ps2x_audio::Stream s_sePairStream = {};
+     static bool s_sePaired = false;
+     static std::set<uint32_t> s_sePairIds;
++    // [sepair] ring 5's `fed` when the last pair closed. `fed` is the play counter the guest's credit is computed from
++    // (streamProgress -> bt3SndIopConsume hands back (fed + gap) * 2 bytes and remembers what it handed back), so it
++    // must never go backwards. The pair used to set it to 0 on closing, to mark ring 5 "never played" for the next
++    // pair: the next jingle on 4+5 then counted from 0 again, below what the guest had already been credited, no space
++    // came back, ring 5 stayed full and its ADX player never decoded to the end -- the story's second FAILED screen in
++    // a row waited forever for that and never started its menu music (14.11., Manuel; 2 of 2 desktop repros).
++    // Fresh now means: nothing fed since the last close.
++    static uint64_t s_sePairFedMarkB = 0;
+     if (!s_noPair)
+     {
+         constexpr uint32_t kA = 4u, kB = 5u;
+@@ -773,7 +794,7 @@ void PS2AudioBackend::serviceStreams()
+             if (!s_sePaired)
+             {
+                 const double sinceB = std::chrono::duration<double>(std::chrono::steady_clock::now() - B.burstStart).count();
+-                const bool bFresh = !B.ring.empty() && B.fed == 0 && sinceB < 0.25 && !B.started;   // ring 5 has just begun a burst on a stream that has never played
++                const bool bFresh = !B.ring.empty() && B.fed == s_sePairFedMarkB && sinceB < 0.25 && !B.started;   // ring 5 has just begun a burst, nothing of it played yet
+                 const bool aLive = A.sampleRate == B.sampleRate && (!A.ring.empty() || A.started);
+                 if (bFresh && aLive)
+                 {
+@@ -836,7 +857,7 @@ void PS2AudioBackend::serviceStreams()
+                     ps2x_audio::closeStream(s_sePairStream);
+                     s_sePaired = false; s_sePairIds.clear();
+                     A.started = m_impl->streams.find(kA) != m_impl->streams.end();   // its mono device stream is still open and running
+-                    B.started = false; B.fed = 0;
++                    B.started = false; s_sePairFedMarkB = B.fed;   // (fed stays: the guest's credit counts on it)
+                     std::fprintf(stderr, "[sepair] t=%.1fs rings %u+%u pair closed\n", tNow, kA, kB);
+                 }
+             }
 diff --git a/ps2xRuntime/src/lib/ps2_host_audio.cpp b/ps2xRuntime/src/lib/ps2_host_audio.cpp
 index 7d73e40fcc66ceeb0832cd9ad9494c043c31adff..503f53e6fb34e536034b32e6789ab6a7081dbaac 100644
 --- a/ps2xRuntime/src/lib/ps2_host_audio.cpp
@@ -10316,7 +10625,7 @@ index 7d73e40fcc66ceeb0832cd9ad9494c043c31adff..503f53e6fb34e536034b32e6789ab6a7
                  {
                      std::fprintf(stderr, "[hostaudio] SDL_OpenAudioDevice failed: %s -- falling back to raylib\n",
 diff --git a/ps2xRuntime/src/lib/ps2_seamvk.cpp b/ps2xRuntime/src/lib/ps2_seamvk.cpp
-index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20df9005e5 100644
+index 31ac5d3740003207c5ae2d14537253200ff5aed7..3b283b011e7b234ad0f8a52490d8a35c8d4231ce 100644
 --- a/ps2xRuntime/src/lib/ps2_seamvk.cpp
 +++ b/ps2xRuntime/src/lib/ps2_seamvk.cpp
 @@ -13,6 +13,18 @@
@@ -11242,7 +11551,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20
                          const uint8_t *src = f.verts.data() + e.vertOff;
                          if (k) { std::memcpy(vb + size_t(o) * 48u, src, 48u); ++o; }                                              // degenerate join: this chunk's first vertex ...
                          std::memcpy(vb + size_t(o) * 48u, src, size_t(e.count) * 48u); o += e.count;
-@@ -1912,6 +2573,185 @@ namespace seamvk
+@@ -1912,6 +2573,205 @@ namespace seamvk
          if (inPass) cmd->end_render_pass();
          g_gpu.msLoop += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tL0).count();
          tsMark(*cmd, 4);
@@ -11356,8 +11665,27 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20
 +            bool menuUsed = false;
 +            {
 +                static bool s_haveOut = false;
++                // [arblink] During a fight the game screen comes only after the fighters have been missing for 2 s, and it
++                // stays until they have been back for half a second. The game draws no fighters at all while its camera
++                // shows only the sky or the ground (a fighter knocked high or held at the room's wall: 0.1 .. 1.1 s, often
++                // three gaps in a row) and in the story's talk before a fight (~20 s). The game screen came and went with
++                // every such gap -- the whole TV picture blinked in front of the player, Goku's orange first (Manuel
++                // 10.11.; 12.11.: 5 to 9 switches per Raditz fight). In a shorter gap the room stays, the HUD panel with it.
++                static std::chrono::steady_clock::time_point s_lastScene{}, s_sceneSince{};
++                static bool s_screenUp = false;
++                const auto tNow = std::chrono::steady_clock::now();
++                if (sceneSeen) { if (s_sceneSince == std::chrono::steady_clock::time_point{}) s_sceneSince = tNow; s_lastScene = tNow; }
++                else s_sceneSince = {};
++                const bool inFight = arcam::fightState();
++                bool screenWanted;
++                if (!inFight) screenWanted = !sceneSeen;   // menus, results, loading: as soon as the room has no fight
++                else if (s_screenUp) screenWanted = !(sceneSeen && tNow - s_sceneSince >= std::chrono::milliseconds(500));
++                else screenWanted = !sceneSeen && (s_lastScene == std::chrono::steady_clock::time_point{} || tNow - s_lastScene >= std::chrono::seconds(2));
++                arxr::setFighterGap(inFight && !sceneSeen && !screenWanted);
++                const bool screenNow = screenWanted && s_haveOut && g_gpu.out;
 +                auto hit = g_gpu.targets.find(arcam::kHudFbp);
-+                Target *hud = (sceneSeen && arcam::hudDrawnThisFrame() && hit != g_gpu.targets.end() && hit->second.img) ? &hit->second : nullptr;
++                Target *hud = (!screenNow && sceneSeen && arcam::hudDrawnThisFrame() && hit != g_gpu.targets.end() && hit->second.img) ? &hit->second : nullptr;
++                s_screenUp = screenNow;
 +                if (hud)
 +                {   // [arhud] the fight's HUD target (its display region, coverage alpha) onto the floating panel
 +                    const uint32_t rw = uint32_t(arcam::g_hudRegion[0]) * g_gpu.scale, rh = uint32_t(arcam::g_hudRegion[1]) * g_gpu.scale;
@@ -11384,8 +11712,9 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20
 +                    }
 +                }
 +                // [arhud] a single fight frame without the fighters (a loading hitch) does not switch to the game screen: it
-+                // blinked over the fight, and the HUD panel was placed anew (the HUD quad stays, arxr::endFrame)
-+                else if (!sceneSeen && s_haveOut && g_gpu.out && !(arcam::fightState() && arxr::hudShownRecently()))
++                // blinked over the fight, and the HUD panel was placed anew (the HUD quad stays, arxr::endFrame) --
++                // [arblink] screenNow above holds that back for every gap shorter than 2 s
++                else if (screenNow)
 +                    if (Vulkan::ImageView *mv = arxr::acquireMenu(g_gpu.w, g_gpu.h, false))
 +                    {
 +                        menuUsed = true;
@@ -11428,7 +11757,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20
  
          // ---- compose the CRTC circuits into the output frame ----
          const uint32_t en1 = (uint32_t)(priv.pmode & 1u), en2 = (uint32_t)((priv.pmode >> 1) & 1u);
-@@ -1954,6 +2794,79 @@ namespace seamvk
+@@ -1954,6 +2814,79 @@ namespace seamvk
              if (en1) composeCircuit(*cmd, priv.dispfb1, priv.display1, (en2 && !sameBuf) ? (mmod ? alp / 255.0f : 0.5f) : 1.0f, en2 && !sameBuf, f, 0);
              cmd->end_render_pass();
          }
@@ -11508,7 +11837,7 @@ index 31ac5d3740003207c5ae2d14537253200ff5aed7..aade2df3d63bd99127390d75d16f4d20
          cmd->image_barrier(*g_gpu.out, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
-@@ -2106,3 +3019,6 @@ namespace seamvk
+@@ -2106,3 +3039,6 @@ namespace seamvk
          }
      }
  }
